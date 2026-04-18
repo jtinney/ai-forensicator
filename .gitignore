@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Node
+node_modules/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# DFIR working output (never commit evidence-derived artifacts)
+analysis/
+exports/
+reports/
+*.E01
+*.dd
+*.raw
+*.mem
+*.vmem
+*.plaso
+*.evtx
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Build / dist
+dist/
+build/
+*.log
