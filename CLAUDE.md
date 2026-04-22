@@ -89,9 +89,17 @@ workbook-update       # update FOR508 workbook
 
 ## Tool Routing
 
-> **If the case has no specific lead** — start at `@.claude/skills/TRIAGE.md`.
-> It runs the unguided protocol (triage → wide → deep → pivot) and routes you
-> into the right domain skill once a lead surfaces.
+> **If the case has ≥2 evidence items, or is open-ended enough to touch
+> multiple domains** — use phase-based multi-agent orchestration via
+> `@.claude/skills/ORCHESTRATE.md`. The orchestrator dispatches the five
+> phase agents (`dfir-triage`, `dfir-surveyor`, `dfir-investigator`,
+> `dfir-correlator`, `dfir-reporter`) so raw tool output stays on disk and
+> the main context holds only pointers.
+>
+> **If the case has a single evidence item and no specific lead** — start at
+> `@.claude/skills/TRIAGE.md`. It runs the unguided protocol
+> (triage → wide → deep → pivot) in one context and routes you into the right
+> domain skill once a lead surfaces.
 >
 > **If the case has a specific question** — jump straight to the matching
 > domain skill below. Each skill's "Tool selection" table maps the question to
@@ -101,7 +109,8 @@ workbook-update       # update FOR508 workbook
 
 | Domain | Skill File |
 |--------|-----------|
-| **Unguided examination (triage → pivot loop)** | `@.claude/skills/TRIAGE.md` |
+| **Multi-evidence / multi-domain orchestration (phase-based)** | `@.claude/skills/ORCHESTRATE.md` |
+| **Unguided examination, single context (triage → pivot loop)** | `@.claude/skills/TRIAGE.md` |
 | **Case start / preflight / fallbacks** | `@.claude/skills/dfir-bootstrap/SKILL.md` |
 | Case scope & metadata | `@./CLAUDE.md` (project working directory) |
 | Timeline generation (Plaso) | `@.claude/skills/plaso-timeline/SKILL.md` |
