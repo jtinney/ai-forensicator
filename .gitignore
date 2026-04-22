@@ -20,6 +20,7 @@ Thumbs.db
 analysis/
 exports/
 reports/
+evidence/
 *.E01
 *.dd
 *.raw
