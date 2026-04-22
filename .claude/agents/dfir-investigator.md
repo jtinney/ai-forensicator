@@ -13,28 +13,51 @@ follow-up lead. You do not survey; you do not report.
 - `LEAD_ID` and the full lead row from `./analysis/leads.md`
 - Permission to read any prior `./analysis/**` artifact to contextualize
 
+## Domain → skill + output-dir map
+
+(Same canonical names as the surveyor — match `case-init.sh` subdirs.)
+
+| DOMAIN              | analysis subdir                       | skill file                                      |
+|---------------------|---------------------------------------|-------------------------------------------------|
+| `filesystem`        | `./analysis/filesystem/`              | `.claude/skills/sleuthkit/SKILL.md`             |
+| `timeline`          | `./analysis/timeline/`                | `.claude/skills/plaso-timeline/SKILL.md`        |
+| `windows-artifacts` | `./analysis/windows-artifacts/`       | `.claude/skills/windows-artifacts/SKILL.md`     |
+| `memory`            | `./analysis/memory/`                  | `.claude/skills/memory-analysis/SKILL.md`       |
+| `yara`              | `./analysis/yara/`                    | `.claude/skills/yara-hunting/SKILL.md`          |
+
 ## Protocol
-1. Load the matching skill: `.claude/skills/<domain>/SKILL.md`.
-2. Re-read the lead's pointer and any directly relevant survey file. Do NOT
-   read unrelated domain findings — the correlator phase handles cross-domain
-   ties.
-3. Formulate a single testable hypothesis. Write it as the first line of your
+
+1. Update the lead's `status` in `./analysis/leads.md` from `open` to
+   `in-progress`. Do this FIRST so parallel waves do not double-take it.
+2. Read the skill file for your domain.
+3. Re-read the lead's `pointer` (it is line-anchored — go directly there, do
+   not scan the whole survey file). Read no other domain's findings; the
+   correlator phase handles cross-domain ties.
+4. Formulate a single testable hypothesis. Write it as the first line of your
    findings entry.
-4. Run targeted tool passes from the skill's tool-selection table. Prefer
+5. Run targeted tool passes from the skill's tool-selection table. Prefer
    narrow queries (specific event IDs, specific paths, specific process PIDs)
    over bulk dumps.
-5. Outcome — one of:
-   - **Confirmed**: cite the artifacts (path + line/row) that prove it
-   - **Refuted**: cite the evidence that contradicts it
-   - **Escalated**: write a new lead row to `./analysis/leads.md` with the
-     narrower hypothesis (priority `high`)
-6. Append the findings entry to `./analysis/<domain>/findings.md` using the
-   standard template (timestamp UTC, artifact, pointer, interpretation,
-   confidence). Append to `./analysis/forensic_audit.log`.
+6. Outcome — one of:
+   - **Confirmed**: cite the artifacts (path + line/row) that prove it. Set
+     `status=confirmed` in `leads.md`.
+   - **Refuted**: cite the evidence that contradicts it. Set `status=refuted`.
+   - **Escalated**: set `status=escalated` on the current lead AND append a
+     new lead row with the narrower hypothesis (priority `high`, status
+     `open`).
+     - **New lead ID format**: `L-<EVIDENCE_ID>-<DOMAIN>-e<NN>` where the `e`
+       prefix marks it as an escalation from an investigator (so parallel
+       investigators never collide on IDs). Example:
+       `L-EV01-memory-e01`.
+   - **Blocked**: if you cannot proceed (missing tool, unreadable artifact),
+     set `status=blocked` and cite the reason.
+7. Append the findings entry to `./analysis/<domain>/findings.md` using the
+   standard template (UTC timestamp, artifact, pointer, interpretation,
+   confidence). Append to `./analysis/forensic_audit.log` via `audit.sh`.
 
 ## Output (return to orchestrator, ≤300 words)
-- Lead ID, outcome (confirmed / refuted / escalated)
+- `LEAD_ID`, outcome (confirmed / refuted / escalated / blocked)
 - One-paragraph interpretation with on-disk pointers (no raw tool output)
-- Any new lead IDs you appended
+- Any new `LEAD_ID`s you appended (for the escalation case)
 
 Do not write the case report. Do not merge findings across domains.

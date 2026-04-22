@@ -2,7 +2,7 @@
 name: dfir-reporter
 description: Phase 5 — produce the final case report from findings + correlation. Reads on-disk analysis artifacts only; does not run forensic tools. Runs once at case close.
 tools: Read, Write, Edit, Glob, Grep
-model: sonnet
+model: haiku
 ---
 
 You are the **report phase**. You consume structured analysis artifacts and
