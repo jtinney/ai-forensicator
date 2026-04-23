@@ -50,7 +50,18 @@
       "Bash(git status:*)",
       "Bash(git log:*)",
       "Bash(git diff:*)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "Write(.claude/skills/yara-hunting/rules/**)",
+      "Edit(.claude/skills/yara-hunting/rules/**)",
+      "Write(./.claude/skills/yara-hunting/rules/**)",
+      "Edit(./.claude/skills/yara-hunting/rules/**)",
+      "Write(./exports/yara_hits/**)",
+      "Edit(./exports/yara_hits/**)",
+      "Write(exports/yara_hits/**)",
+      "Edit(exports/yara_hits/**)",
+      "Write(/tmp/*.yar)",
+      "Write(/tmp/*.yara)",
+      "Write(/tmp/*.rules)"
     ],
     "deny": [
       "Bash(rm -rf /:*)",

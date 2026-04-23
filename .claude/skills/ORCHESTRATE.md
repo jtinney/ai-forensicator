@@ -33,7 +33,7 @@ survey/findings output paths line up without translation.
 | 2 Survey | `dfir-surveyor` | sonnet | one per (evidence × domain) | manifest + one evidence item | `analysis/<domain>/survey-*.md`, appends `leads.md` |
 | 3 Investigate | `dfir-investigator` | sonnet | one per lead | one lead row + its pointer | `analysis/<domain>/findings.md`, updates `leads.md` status, may append |
 | 4 Correlate | `dfir-correlator` | **opus** | once per wave | all `findings.md` | `analysis/correlation.md`, may append `L-CORR-*` leads |
-| 5 Report | `dfir-reporter` | haiku | once | correlation + findings | `reports/final.md` |
+| 5 Report | `dfir-reporter` | haiku | once | correlation + findings | `reports/final.md` + `reports/stakeholder-summary.md` |
 
 ## Lead ID conventions (collision-free under parallel fan-out)
 
@@ -76,9 +76,13 @@ to the invocation that produced it.
      then re-correlate. Hard stop after the second correlation pass.
 
 5. **Phase 5 — Report** (blocking)
-   - Invoke `dfir-reporter` once.
-   - Relay its executive summary to the user with a pointer to
-     `./reports/final.md`.
+   - Invoke `dfir-reporter` once. It produces two reports:
+     - `./reports/final.md` — technical case report (analysts).
+     - `./reports/stakeholder-summary.md` — decision-focused briefing for
+       non-technical senior stakeholders, written per
+       `.claude/skills/exec-briefing/SKILL.md`.
+   - Relay the executive summary from `final.md` and the one-line posture
+     from the stakeholder briefing, with pointers to both files.
 
 ## Context hygiene rules (orchestrator)
 
