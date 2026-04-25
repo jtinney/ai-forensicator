@@ -68,6 +68,10 @@ Before touching evidence on a new case or a new SIFT instance:
 | **EWF tools** | `ewfmount`, `ewfinfo`, `ewfverify` | install via `libewf-tools` from GIFT PPA | The Ubuntu package `ewf-tools` is the OLD libewf2 build and conflicts with modern `libewf` — `libewf-tools` (GIFT) is the correct package; provides the same binaries |
 | **python3-regipy / python3-evtx** | dpkg packages | **often absent** — verify via preflight | Needed for structured hive / EVTX parsing |
 | **dotnet runtime** | `/usr/bin/dotnet` (v9.0.x) | required for EZ Tools | Install `dotnet-runtime-9.0` from Microsoft package feed; runtime-only (no SDK needed) |
+| **Wireshark CLI** | `tshark`, `capinfos`, `mergecap`, `editcap` | install `tshark` (pulls `wireshark-common`) | Display-filter pcap analysis; `-T fields` exports CSV-friendly columns |
+| **Zeek** | `zeek`, `zeek-cut` | install `zeek` (jammy/universe) or upstream APT | Protocol-aware analyser → structured TSV logs (`conn.log`, `dns.log`, …) |
+| **Suricata** | `suricata`, `suricata-update` | install `suricata` + `suricata-update` | Signature-based IDS; `-r` for offline pcap; ET Open via `suricata-update` |
+| **tcpdump / tcpflow / ngrep / nfdump / jq** | small CLI helpers | install via apt | Capture-side utilities + flow records + JSON-line triage |
 
 **Not available on any SIFT Linux instance:** MemProcFS, VSCMount (Windows-only).
 
@@ -117,6 +121,7 @@ workbook-update       # update FOR508 workbook
 | File system & carving (Sleuth Kit) | `@.claude/skills/sleuthkit/SKILL.md` |
 | Memory forensics (Volatility 3 / Memory Baseliner) | `@.claude/skills/memory-analysis/SKILL.md` |
 | Windows artifacts (EZ Tools / Event Logs / Registry) | `@.claude/skills/windows-artifacts/SKILL.md` |
+| Network forensics (tshark / Zeek / Suricata / pcap) | `@.claude/skills/network-forensics/SKILL.md` |
 | Threat hunting & IOC sweeps (YARA / Velociraptor) | `@.claude/skills/yara-hunting/SKILL.md` |
 
 EZ Tools prefer native .NET over WINE. GUI tools (TimelineExplorer, RegistryExplorer) require WINE or the Windows analysis VM.

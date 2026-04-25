@@ -91,6 +91,26 @@ BASE_APT_OPTIONAL=(bulk-extractor wine64)
 PLASO_APT_REQUIRED=(python3-plaso plaso-tools python3-pytsk3 python3-evtx)
 PLASO_APT_OPTIONAL=()
 PIP_REQUIRED=(yara-python impacket construct analyzeMFT LnkParse3 regipy)
+
+# Network-forensic apt packages.
+# - tshark pulls in wireshark-common, which provides capinfos / mergecap / editcap.
+# - zeek is in jammy/universe; the upstream Zeek APT repo is fresher but adds
+#   another sources.list entry — stick with universe unless the user opts in.
+# - suricata + suricata-update; ET Open rules pulled lazily on first run.
+# - tcpdump / tcpflow / ngrep / nfdump / jq are small, broadly useful CLI helpers.
+NETWORK_APT_REQUIRED=(
+    tshark
+    tcpdump
+    tcpflow
+    ngrep
+    suricata
+    suricata-update
+    jq
+)
+NETWORK_APT_OPTIONAL=(zeek nfdump)
+# scapy + dpkt are optional Python helpers — the stdlib parsers in
+# .claude/skills/network-forensics/parsers/ work without either.
+NETWORK_PIP_OPTIONAL=(scapy dpkt)
 # No pip-optional packages right now.
 # Note on pyewf: the original script had `pyewf` in PIP_OPTIONAL, but there is
 # no pip package by that name (PyPI returns "no matching distribution"). The
@@ -391,6 +411,8 @@ run_check_mode() {
     check_pkg_group "dotnet runtime" "dotnet-runtime-9.0"
     check_pkg_group "Plaso/forensic apt packages" "${PLASO_APT_REQUIRED[@]}"
     check_pkg_group "Plaso optional apt packages" "${PLASO_APT_OPTIONAL[@]}"
+    check_pkg_group "Network-forensic apt packages (required)" "${NETWORK_APT_REQUIRED[@]}"
+    check_pkg_group "Network-forensic apt packages (optional)" "${NETWORK_APT_OPTIONAL[@]}"
 
     header "Commands"
     check_cmd_present fls
@@ -400,6 +422,12 @@ run_check_mode() {
     check_cmd_present yara
     check_cmd_present dotnet
     check_cmd_present python3
+    check_cmd_present tshark
+    check_cmd_present capinfos
+    check_cmd_present tcpdump
+    check_cmd_present zeek
+    check_cmd_present suricata
+    check_cmd_present jq
 
     header "Python packages (pip)"
     local pkg
@@ -758,6 +786,48 @@ install_memory_baseliner() {
     fi
 }
 
+install_network_tools() {
+    header "Network-forensic tools (tshark / Zeek / Suricata / tcpdump)"
+    install_required_packages "network-forensic apt packages" "${NETWORK_APT_REQUIRED[@]}"
+    if [[ ${#NETWORK_APT_OPTIONAL[@]} -gt 0 ]]; then
+        install_optional_packages "network-forensic optional apt packages" "${NETWORK_APT_OPTIONAL[@]}"
+    fi
+    # tshark is normally a non-interactive install on SIFT, but on stock Ubuntu
+    # the postinst asks whether non-root users may capture. We accept the
+    # default (No — analysis-only host) by pre-seeding debconf.
+    if pkg_installed wireshark-common && ! debconf-show wireshark-common 2>/dev/null \
+       | grep -q 'wireshark-common/install-setuid: false'; then
+        echo "wireshark-common wireshark-common/install-setuid boolean false" \
+            | "${SUDO[@]}" debconf-set-selections >> "$LOGFILE" 2>&1 || true
+    fi
+
+    # Pull baseline ET Open rules so suricata -r works without network access
+    # later. Idempotent — suricata-update tolerates re-run.
+    if command -v suricata-update >/dev/null 2>&1; then
+        if "${SUDO[@]}" suricata-update --no-test >> "$LOGFILE" 2>&1; then
+            ok "suricata-update: ET Open rules synced"
+        else
+            warn "suricata-update: failed (continuing — rules can be pulled later)"
+        fi
+    fi
+
+    # Optional Python helpers — never block on these
+    if pip_available; then
+        local pkg
+        for pkg in "${NETWORK_PIP_OPTIONAL[@]}"; do
+            if pip_has_package "$pkg"; then
+                ok "pip package already installed (optional): ${pkg}"
+                continue
+            fi
+            if "${SUDO[@]}" pip3 install -q "$pkg" >> "$LOGFILE" 2>&1; then
+                ok "pip install (optional) ${pkg}"
+            else
+                warn "pip install (optional) ${pkg} failed; continuing"
+            fi
+        done
+    fi
+}
+
 install_python_libs() {
     header "Python pip libraries"
     if ! pip_available; then
@@ -839,6 +909,7 @@ main() {
     install_volatility3
     install_memory_baseliner
     install_python_libs
+    install_network_tools
     print_install_summary
 
     [[ $ERRORS -eq 0 ]]

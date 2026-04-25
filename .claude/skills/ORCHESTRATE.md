@@ -13,7 +13,7 @@ Nothing else.
 
 ## Canonical domain names
 
-All agents and orchestrator dispatches use these five `DOMAIN` values. They
+All agents and orchestrator dispatches use these six `DOMAIN` values. They
 match the subdirs `case-init.sh` creates, so the findings.md stubs and
 survey/findings output paths line up without translation.
 
@@ -23,6 +23,7 @@ survey/findings output paths line up without translation.
 | `timeline`          | `./analysis/timeline/`           | `.claude/skills/plaso-timeline/SKILL.md`        | Plaso super-timelines, slices                       |
 | `windows-artifacts` | `./analysis/windows-artifacts/`  | `.claude/skills/windows-artifacts/SKILL.md`     | EZ Tools, EVTX, registry, Prefetch, Amcache         |
 | `memory`            | `./analysis/memory/`             | `.claude/skills/memory-analysis/SKILL.md`       | Volatility 3, Memory Baseliner                      |
+| `network`           | `./analysis/network/`            | `.claude/skills/network-forensics/SKILL.md`     | tshark, Zeek, Suricata, pcap triage, beaconing      |
 | `yara`              | `./analysis/yara/`               | `.claude/skills/yara-hunting/SKILL.md`          | YARA IOC sweeps, Velociraptor                       |
 
 ## Agents
@@ -58,6 +59,8 @@ to the invocation that produced it.
      - `disk` → `filesystem`, `windows-artifacts`, `timeline`, `yara`
      - `memory` → `memory`, `yara`
      - `logs` / `triage-bundle` → `windows-artifacts`, `timeline`
+     - `pcap` → `network`, `yara`, `timeline`
+     - `netlog` → `network`, `timeline`
    - Dispatch all `dfir-surveyor` invocations in a single message (parallel).
    - On return, read `analysis/leads.md` for the lead queue.
 

@@ -24,9 +24,11 @@ inventory only.
 3. For each evidence item, classify:
    - **disk** — `.E01`, `.dd`, `.raw` matching partition layout (verify with `ewfinfo` or `mmls`)
    - **memory** — `.mem`, `.raw`, `.vmem`, `.dmp` (verify: `file` reports no MBR/GPT; size matches RAM)
-   - **logs** — `.evtx`, `.log`, `.json`, archive of exported logs
+   - **logs** — `.evtx`, `.log`, `.json`, archive of exported logs (non-network)
    - **triage-bundle** — KAPE output, CyLR, Velociraptor collection (look for `C/` or `Uploads/` structure)
-   - **other** — pcap, mail stores, mobile images (note but do not deep-classify)
+   - **pcap** — `.pcap`, `.pcapng`, `.cap` (verify with `file` → "tcpdump capture" or pcapng magic; or run `capinfos`)
+   - **netlog** — Zeek log directory (presence of `conn.log`/`dns.log`/`http.log` with `#fields` header), Suricata `eve.json`, NetFlow `*.nfcapd` / `nfdump` exports
+   - **other** — mail stores, mobile images, container snapshots (note but do not deep-classify)
 4. Assign `evidence_id` in the form `EV01`, `EV02`, ... (zero-padded, case-scoped). Record SHA-256 (do not modify originals).
 5. Write `./analysis/manifest.md` with one row per evidence item:
    `| evidence_id | path | type | size | sha256 | notes |`

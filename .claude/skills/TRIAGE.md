@@ -188,6 +188,26 @@ Sweep all of these — persistence is rarely in one location:
 | 5 | Browser history via SQLECmd | User-driven HTTP/HTTPS |
 | 6 | `bulk_extractor -e net -e url -e domain -e email` over image | Carved indicators in slack/unallocated |
 
+### Network — "What was on the wire?"
+
+| Question | Best tool | Why |
+|---|---|---|
+| Capture metadata (time range, count, drops, link layer) | `capinfos <pcap>` | Cheapest possible read; sets the time window for everything else |
+| Top talkers by bytes | `tshark -q -z conv,ip -r <pcap>` | One command; sortable; no Zeek dependency |
+| DNS queries (what was looked up) | `tshark -r <pcap> -Y dns -T fields -e frame.time_epoch -e ip.src -e dns.qry.name -e dns.a` | Fastest L7 visibility; works even when SNI is the only L7 field for HTTPS |
+| TLS SNI / JA3 (what was contacted over HTTPS) | `tshark -Y "tls.handshake.type==1" -T fields -e tls.handshake.extensions_server_name -e tls.handshake.ja3` | The only L7-adjacent signal inside encrypted traffic |
+| HTTP request URIs / Host / UA | `tshark -Y http.request -T fields -e http.host -e http.request.uri -e http.user_agent` | Full L7 for cleartext HTTP |
+| Structured cross-protocol logs | `zeek -C -r <pcap>` then `zeek-cut` | Produces conn.log / dns.log / http.log / ssl.log / files.log in one pass |
+| Signature-based IDS sweep | `suricata -r <pcap> -k none -l ./analysis/network/suricata/` | ET Open + custom rules; eve.json is the triage source |
+| Beaconing / C2 detection | `python3 .claude/skills/network-forensics/parsers/conn_beacon.py ./analysis/network/zeek/conn.log` | Stdlib jitter check; ranks low-jitter, high-count flows |
+| File extraction (HTTP / SMB / SMTP / FTP) | `tshark --export-objects http,./exports/network/http_objects/` | One protocol per flag; preserves filenames where present |
+| Single TCP stream as raw bytes | `tshark -Y "tcp.stream eq <N>" -w stream-<N>.pcap` | Cheapest way to isolate one conversation |
+| Fallback when tshark/Zeek/Suricata absent | `python3 .claude/skills/network-forensics/parsers/{pcap_summary,zeek_triage,suricata_eve}.py` | Stdlib triage parsers — top-talkers, DNS qnames, alerts |
+
+**Rule:** never claim a host beaconed to C2 from `tshark`/Zeek alone — confirm
+with JA3/SNI fingerprint match AND host-side process attribution (Sysmon ID 3
+or memory `windows.netscan`).
+
 ### Memory triage — "What was alive at capture?"
 
 | Question | Plugin |
@@ -215,7 +235,11 @@ Every finding has a follow-on. Don't stop at the first hit.
 | Defender disabled / log cleared | (a) who/when (4720, 1102, 4719), (b) what executed *immediately after*, (c) is the policy still tampered now? | `windows-artifacts` |
 | Suspicious memory region (malfind) | (a) dump it, (b) strings + YARA, (c) parent process + cmdline, (d) on-disk backing file (or absence) | `memory-analysis` + `yara-hunting` |
 | A deleted user file | (a) `$I` for original path/SID, (b) `$J` for the delete event, (c) carve `$R` if present, (d) what process did it (Sysmon 23, prefetch around delete time) | `sleuthkit` + `windows-artifacts` |
-| C2-looking outbound | (a) process attribution (Sysmon 3 / netscan), (b) DNS resolution, (c) prior 4624 / parent of process, (d) SRUM bytes total | `windows-artifacts` + `memory-analysis` |
+| C2-looking outbound | (a) process attribution (Sysmon 3 / netscan), (b) DNS resolution, (c) prior 4624 / parent of process, (d) SRUM bytes total, (e) pcap if available — JA3/SNI + cadence | `windows-artifacts` + `memory-analysis` + `network-forensics` |
+| Beaconing candidate (low jitter, repeated outbound) | (a) confirm via tshark cadence, (b) JA3 + SNI for the flow, (c) host process attribution (Sysmon 3 / memory netscan), (d) timeline-slice host activity at the same intervals | `network-forensics` + `memory-analysis` + `plaso-timeline` |
+| Suspicious DNS qname in pcap | (a) DNS-Client EVTX 3008 on host, (b) memory DNS cache, (c) browser history if userland, (d) YARA the qname literal across disk + memory | `network-forensics` + `windows-artifacts` + `memory-analysis` + `yara-hunting` |
+| File carved from pcap (HTTP / SMB / SMTP / FTP) | (a) hash + YARA, (b) cross-reference to host filesystem (was it written?), (c) `$J` for create time, (d) Prefetch/Amcache for execution | `yara-hunting` + `sleuthkit` + `windows-artifacts` |
+| Suricata alert hit | (a) confirm payload bytes match signature with `tshark -Y` on the flow, (b) extract any L7 indicators (URL, host, UA), (c) build YARA, (d) sweep host evidence | `network-forensics` + `yara-hunting` + `windows-artifacts` |
 | USB device connected | (a) what was copied (LNK files, $J, RecentDocs, JumpLists), (b) RDP file copy 1149, (c) browser uploads in same window | `windows-artifacts` + `plaso-timeline` |
 
 ---

@@ -23,6 +23,7 @@ follow-up lead. You do not survey; you do not report.
 | `timeline`          | `./analysis/timeline/`                | `.claude/skills/plaso-timeline/SKILL.md`        |
 | `windows-artifacts` | `./analysis/windows-artifacts/`       | `.claude/skills/windows-artifacts/SKILL.md`     |
 | `memory`            | `./analysis/memory/`                  | `.claude/skills/memory-analysis/SKILL.md`       |
+| `network`           | `./analysis/network/`                 | `.claude/skills/network-forensics/SKILL.md`     |
 | `yara`              | `./analysis/yara/`                    | `.claude/skills/yara-hunting/SKILL.md`          |
 
 ## Protocol

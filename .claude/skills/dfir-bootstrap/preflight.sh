@@ -118,6 +118,19 @@ bin_check yara || true
 bin_check yarac || true
 bin_check dotnet || true
 bin_check wine || true
+bin_check tshark || true
+bin_check capinfos || true
+bin_check mergecap || true
+bin_check editcap || true
+bin_check tcpdump || true
+bin_check tcpflow || true
+bin_check ngrep || true
+bin_check zeek || true
+bin_check zeek-cut || true
+bin_check suricata || true
+bin_check suricata-update || true
+bin_check nfdump || true
+bin_check jq || true
 
 cat <<'EOF'
 
@@ -153,6 +166,8 @@ py_check pyewf || true
 py_check pytsk3 || true
 py_check impacket || true
 py_check construct || true
+py_check scapy || true             # programmatic packet manipulation
+py_check dpkt || true              # lightweight pcap parsing
 
 cat <<'EOF'
 
@@ -200,6 +215,16 @@ pkg_check python3-regipy || true
 pkg_check python3-evtx || true
 pkg_check python3-pip || true
 pkg_check dotnet-runtime-9.0 || true
+pkg_check tshark || true
+pkg_check wireshark-common || true
+pkg_check tcpdump || true
+pkg_check tcpflow || true
+pkg_check ngrep || true
+pkg_check zeek || true
+pkg_check suricata || true
+pkg_check suricata-update || true
+pkg_check nfdump || true
+pkg_check jq || true
 
 cat <<'EOF'
 
@@ -315,6 +340,16 @@ elif python3 -c 'import Evtx, regipy' >/dev/null 2>&1; then
     printf "| windows-artifacts | YELLOW | no EZ Tools but python-evtx+regipy present — structured parse OK |\n"
 else
     printf "| windows-artifacts | YELLOW | EZ Tools + regipy + python-evtx all missing — use dfir-bootstrap/parsers/ fallbacks |\n"
+fi
+
+# network-forensics — green when full toolchain present; tier down on partial
+if command -v tshark >/dev/null 2>&1 && command -v zeek >/dev/null 2>&1 \
+   && command -v suricata >/dev/null 2>&1; then
+    printf "| network-forensics | GREEN | tshark + zeek + suricata all present |\n"
+elif command -v tshark >/dev/null 2>&1; then
+    printf "| network-forensics | YELLOW | tshark present but zeek/suricata missing — display-filter analysis only; install \`zeek\` + \`suricata\` for full coverage |\n"
+else
+    printf "| network-forensics | YELLOW | tshark/zeek/suricata absent — fall back to .claude/skills/network-forensics/parsers/ (stdlib pcap/zeek/suricata triage) |\n"
 fi
 
 cat <<'EOF'

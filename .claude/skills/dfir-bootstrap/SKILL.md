@@ -152,6 +152,10 @@ deliberately stdlib-only — no `pip install` required.
 | `parsers/prefetch_parse.py` | PECmd | Directory of `.pf` files (Win7/8/10) | CSV: `name, hash, run_count, last_run_utc, version` |
 | `parsers/hive_strings.py` | RECmd / regipy | Registry hive file | Extracts UTF-16LE values + ASCII key paths, greppable text dump |
 | `parsers/evtx_strings.py` | EvtxECmd / python-evtx | EVTX file | Best-effort UTF-16LE strings dump — NOT structured XML |
+| `network-forensics/parsers/pcap_summary.py` | `capinfos` + `tshark -q -z conv,ip` + `-Y dns` | pcap or pcapng file | CSV / JSON: capture metadata, top flows by bytes, top dports, DNS qnames |
+| `network-forensics/parsers/zeek_triage.py` | `zeek-cut`/`awk` pipelines | Zeek log directory | CSV: top talkers, DNS qnames, HTTP user agents, TLS SNI/JA3, file extractions, notices |
+| `network-forensics/parsers/suricata_eve.py` | `jq` over `eve.json` | Suricata `eve.json` | CSV: alerts grouped by signature/category/destination, file events, anomalies |
+| `network-forensics/parsers/conn_beacon.py` | RITA | Zeek `conn.log` or tshark SYN CSV | CSV: ranked beaconing candidates by jitter / count / interval |
 
 **Important caveats:**
 - `rb_parse.py` and `prefetch_parse.py` produce the same columns EZ Tools produce for

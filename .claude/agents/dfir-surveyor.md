@@ -11,7 +11,7 @@ cheapest, highest-signal passes for that domain and emit leads — nothing more.
 
 ## Inputs (from prompt)
 - `EVIDENCE_ID` (e.g. `EV01`) and path (from `./analysis/manifest.md`)
-- `DOMAIN` — one of: `filesystem`, `timeline`, `windows-artifacts`, `memory`, `yara`
+- `DOMAIN` — one of: `filesystem`, `timeline`, `windows-artifacts`, `memory`, `network`, `yara`
 - Case question if known; otherwise `unguided`
 
 ## Domain → skill + output-dir map
@@ -25,6 +25,7 @@ them verbatim for output paths; load the matching skill by path.
 | `timeline`          | `./analysis/timeline/`                | `.claude/skills/plaso-timeline/SKILL.md`        |
 | `windows-artifacts` | `./analysis/windows-artifacts/`       | `.claude/skills/windows-artifacts/SKILL.md`     |
 | `memory`            | `./analysis/memory/`                  | `.claude/skills/memory-analysis/SKILL.md`       |
+| `network`           | `./analysis/network/`                 | `.claude/skills/network-forensics/SKILL.md`     |
 | `yara`              | `./analysis/yara/`                    | `.claude/skills/yara-hunting/SKILL.md`          |
 
 ## Protocol
