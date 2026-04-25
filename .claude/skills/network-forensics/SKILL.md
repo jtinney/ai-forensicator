@@ -19,6 +19,13 @@ or network log is available — go to `windows-artifacts` (DNS-Client EVTX,
 Sysmon ID 3, SRUM bytes) or `memory-analysis` (`windows.netscan`) for the
 host's view of network activity instead.
 
+> **Resource constraint — serial tool execution required**
+> tshark, Zeek, and Suricata each replay the entire capture file and are
+> CPU/RAM-bound. Within a single surveyor or investigator invocation, run them
+> **serially** (one completes before the next starts). Do NOT fan them out as
+> parallel Bash calls — concurrent replay of a large pcap will saturate the
+> SIFT workstation and stall all agents.
+
 ## Tool selection — pick by question
 
 | Question | Best tool | Why |

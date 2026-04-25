@@ -61,12 +61,23 @@ to the invocation that produced it.
      - `logs` / `triage-bundle` → `windows-artifacts`, `timeline`
      - `pcap` → `network`, `yara`, `timeline`
      - `netlog` → `network`, `timeline`
-   - Dispatch all `dfir-surveyor` invocations in a single message (parallel).
+   - Dispatch `dfir-surveyor` invocations in **batches of ≤ 3** (not all at
+     once). For batches that include a `network`-domain surveyor, reduce to
+     **≤ 2** per batch — Zeek and Suricata are full-pcap replay tools and
+     saturate CPU/RAM when run concurrently. Complete each batch before
+     starting the next; append leads as each batch returns.
    - On return, read `analysis/leads.md` for the lead queue.
 
 3. **Phase 3 — Investigate** (parallel waves)
    - Sort `leads.md` rows with `status=open` by `priority` (`high` first).
-   - Dispatch one `dfir-investigator` per lead, **in parallel batches of ≤4**.
+   - Dispatch one `dfir-investigator` per lead in parallel batches. Batch size
+     depends on domain:
+     - `filesystem`, `windows-artifacts`, `yara`, `timeline` → **≤ 4** per
+       batch (I/O-bound; CPU headroom remains)
+     - `network`, `memory` → **≤ 2** per batch (CPU/RAM-bound: Zeek, Suricata,
+       Volatility)
+     Mixed-domain waves: if any lead in the wave is `network` or `memory`, cap
+     the entire batch at ≤ 2.
      The investigator flips its lead's status to `in-progress` before it
      starts, so concurrent waves do not double-take a lead.
    - Leads that `escalate` will append new `-e` rows; run another wave until
