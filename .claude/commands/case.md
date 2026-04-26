@@ -6,7 +6,10 @@ argument-hint: <CASE_ID> [evidence-path]
 Run the phase-based multi-agent DFIR orchestration for case **$1** with
 evidence at `${2:-./evidence/}`.
 
-Follow the dispatch protocol in @.claude/skills/ORCHESTRATE.md.
+Follow the dispatch protocol in @.claude/skills/ORCHESTRATE.md. The
+pipeline runs **six phases**: triage → survey → investigate → correlate
+→ report → QA. The QA phase has authority to correct numerical /
+labeling / lead-status errors in place before sign-off.
 
 **Start by checking whether this is a new case or a resume:**
 
@@ -18,7 +21,12 @@ Follow the dispatch protocol in @.claude/skills/ORCHESTRATE.md.
 
 Operator preferences (from CLAUDE.md) apply: run fully autonomously, no
 check-ins, deliver final findings only. If a phase blocks, pick the most
-reasonable path and note it in the per-phase output.
+reasonable path and note it in the per-phase output. **Exception:** if
+`./analysis/.intake-pending` exists or `intake-check.sh` reports blank
+fields, surface the interview to the user — chain-of-custody intake is
+the one place autonomy yields to operator input.
 
-When Phase 5 completes, relay the reporter's executive summary verbatim and
-the pointer to `./reports/final.md`.
+When Phase 6 completes, relay the QA verdict (`PASS` /
+`PASS-WITH-CHANGES` / `BLOCKED`), the reporter's executive summary
+verbatim, and pointers to `./reports/final.md` and
+`./reports/qa-review.md`.

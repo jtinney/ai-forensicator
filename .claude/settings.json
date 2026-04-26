@@ -143,7 +143,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -d ./analysis ]; then bash .claude/skills/dfir-bootstrap/audit.sh \"stop_hook\" \"Claude session ended\" \"review prior audit entries and ./analysis/<domain>/findings.md for context\" >/dev/null 2>&1 || true; fi"
+            "command": "bash .claude/skills/dfir-bootstrap/audit-stop.sh >/dev/null 2>&1 || true"
           }
         ]
       }

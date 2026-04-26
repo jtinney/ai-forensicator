@@ -64,7 +64,16 @@ inventory only.
    | lead_id | evidence_id | domain | hypothesis | pointer | priority | status |
    |---------|-------------|--------|------------|---------|----------|--------|
    ```
-7. Append to `./analysis/forensic_audit.log` via `audit.sh`. Your first
+7. **Intake gate (DISCIPLINE rule J).** Run
+   `bash .claude/skills/dfir-bootstrap/intake-check.sh`. If it reports
+   blank fields, run `bash .claude/skills/dfir-bootstrap/intake-interview.sh`.
+   - In TTY mode the script prompts the operator directly.
+   - In non-TTY mode the script writes `./analysis/.intake-pending`
+     and exits nonzero. **Surface this to the orchestrator as a
+     blocker** (`INTAKE-PENDING`) and stop — the orchestrator must
+     get the operator's chain-of-custody answers before any further
+     phase runs. Do NOT invent values; do NOT proceed.
+8. Append to `./analysis/forensic_audit.log` via `audit.sh`. Your first
    entry MUST include `discipline_v1_loaded` in the result field.
 
 ## Output (return to orchestrator, ≤200 words)

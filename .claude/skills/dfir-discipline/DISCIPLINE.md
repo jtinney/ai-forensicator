@@ -1,11 +1,11 @@
 # DFIR DISCIPLINE — mandatory rules for every phase agent
 
-These four rules apply at every step of every phase agent (`dfir-triage`,
-`dfir-surveyor`, `dfir-investigator`, `dfir-correlator`, `dfir-reporter`).
-Each rule is bound to one or more specific failure modes observed in
-production cases. The rule statement is normative; the **Why** and **How
-to apply** lines are the operating context an agent uses to handle edge
-cases.
+These rules apply at every step of every phase agent (`dfir-triage`,
+`dfir-surveyor`, `dfir-investigator`, `dfir-correlator`, `dfir-reporter`,
+`dfir-qa`). Each rule is bound to one or more specific failure modes
+observed in production cases. The rule statement is normative; the
+**Why** and **How to apply** lines are the operating context an agent
+uses to handle edge cases.
 
 A future audit of the case will grep for `discipline_v1_loaded` to confirm
 each agent invocation acknowledged these rules — your first audit-log
@@ -236,6 +236,75 @@ Headline tables are load-bearing; they cannot lag the audit trail.
 
 ---
 
+## Rule I — No lead goes un-worked
+**(binds: dfir-investigator, dfir-correlator, dfir-qa)**
+
+**Every lead in `./analysis/leads.md` must reach a terminal status before
+case close. Acceptable terminal states are `confirmed` and `refuted`.
+`escalated` is a transitional state — the parent must transition to
+`confirmed` / `refuted` once its direct child is terminal. `open` is
+acceptable only at `priority=low` AND with an explicit non-blocking
+justification in the row's `notes` column. `blocked` is acceptable only
+when `notes` documents a real external dependency. `in-progress` at case
+close is always a discipline failure (the investigator died mid-run).**
+
+**Why:** Case8 closed with four `escalated` parents whose children were
+all terminal — the parents' own hypotheses had been answered through the
+children, but the leads register kept claiming work was still in flight.
+A reader scanning leads.md cannot tell whether the case is actually done
+or whether some surface was abandoned. The QA pass caught this; the
+discipline rule is here so future correlators / reporters / QA agents
+catch it earlier.
+
+**How to apply:**
+- The orchestrator runs `bash .claude/skills/dfir-bootstrap/leads-check.sh`
+  as a gate before Phases 4 (correlation), 5 (report), and 6 (QA). A
+  nonzero exit forces a remediation pass.
+- Investigators: when your -eNN child closes, always check whether the
+  parent's hypothesis was answered. If yes, transition the parent in
+  the same edit batch — don't leave the bookkeeping for a later phase.
+- Correlator: if leads-check reports violations, return to the
+  orchestrator with a blocker rather than pretending the leads queue
+  is settled. Do not author a correlation matrix on top of an
+  unresolved lead queue.
+- QA agent: has authority to transition lingering parents. Cite the
+  child's findings entry in the parent's `notes` field as
+  justification. Reset stale `in-progress` rows to `open` for
+  re-dispatch.
+
+---
+
+## Rule J — Intake completeness is a precondition
+**(binds: dfir-triage, dfir-correlator, dfir-reporter, dfir-qa)**
+
+**`reports/00_intake.md` must have every chain-of-custody field
+populated before correlation, reporting, or QA runs. The triage agent
+is responsible for completing intake at case open via the interactive
+interview. If the harness has no TTY and the operator has not provided
+intake values via env vars, triage MUST surface this as a blocker —
+not silently proceed with blank fields.**
+
+**Why:** Case8 closed with every chain-of-custody field blank in
+`reports/00_intake.md` (Source, Acquired, Received, Evidence hash,
+Integrity verification, Reported incident, Analyst priorities). The
+underlying scaffolding accepted blank stubs as valid. Without intake,
+a future examiner has no idea who authored the case, what they were
+asked to find, or how the evidence was acquired — the report cannot
+support a chain of custody. **This is the one place agent autonomy
+yields to operator input.** The intake interview is exempt from the
+"NEVER ask questions" operator preference.
+
+**How to apply:**
+- `bash .claude/skills/dfir-bootstrap/intake-check.sh` is a gate at
+  Phases 4, 5, and 6. A nonzero exit means STOP and run the interview.
+- The interview script (`intake-interview.sh`) reads from `/dev/tty`
+  if available; non-TTY mode accepts `INTAKE_*` env vars or writes
+  `./analysis/.intake-pending` for the orchestrator to surface.
+- Use `n/a — <reason>` (not blank, not `TBD`, not `?`) when a field
+  genuinely does not apply. The check rejects placeholders.
+
+---
+
 ## Cross-rule notes
 
 - The DISCIPLINE.md path is referenced from each agent's frontmatter as
@@ -244,6 +313,9 @@ Headline tables are load-bearing; they cannot lag the audit trail.
 - The PreToolUse / PostToolUse hooks enforce Rule A mechanically. Rules
   F / G / H / B are agent-prompt-level discipline; they are caught after
   the fact by audit-log review and by the orchestrator's wave-2 logic.
+- Rules I and J are gate-enforced by `leads-check.sh` and
+  `intake-check.sh`; the QA phase agent additionally has authority to
+  apply remediation Edits in place.
 - When in doubt about whether a borderline item is in scope (G) or
   whether the surface is exhausted (H), prefer the more conservative
   (in-scope / not-exhausted) choice. The cost of an extra lead is one

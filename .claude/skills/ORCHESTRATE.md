@@ -1,6 +1,6 @@
 # Skill: Phase-Based Multi-Agent Orchestration
 
-The orchestrator's protocol for running a DFIR case across the five phase
+The orchestrator's protocol for running a DFIR case across the six phase
 agents. Use this entrypoint when the case involves more than one evidence item
 or when context would otherwise balloon past a single session.
 
@@ -31,11 +31,12 @@ survey/findings output paths line up without translation.
 
 | Phase | Agent | Model | Fan-out | Reads | Writes |
 |-------|-------|-------|---------|-------|--------|
-| 1 Triage | `dfir-triage` | haiku | once | evidence dir | `analysis/manifest.md`, `analysis/preflight.md`, `analysis/leads.md` header |
+| 1 Triage | `dfir-triage` | haiku | once | evidence dir | `analysis/manifest.md`, `analysis/preflight.md`, `analysis/leads.md` header, `reports/00_intake.md` (interview-completed) |
 | 2 Survey | `dfir-surveyor` | sonnet | one per (evidence × domain) | manifest + one evidence item | `analysis/<domain>/survey-*.md`, appends `leads.md` |
 | 3 Investigate | `dfir-investigator` | sonnet | one per lead | one lead row + its pointer | `analysis/<domain>/findings.md`, updates `leads.md` status, may append |
 | 4 Correlate | `dfir-correlator` | **opus** | once per wave | all `findings.md` | `analysis/correlation.md`, may append `L-CORR-*` leads |
 | 5 Report | `dfir-reporter` | haiku | once | correlation + findings | `reports/final.md` + `reports/stakeholder-summary.md` |
+| 6 QA | `dfir-qa` | **opus** | once at close | all case docs + authoritative artifacts | corrects errors in place via `Edit`, transitions non-terminal leads, writes `reports/qa-review.md` |
 
 ## Lead ID conventions (collision-free under parallel fan-out)
 
@@ -112,6 +113,27 @@ to the invocation that produced it.
        `.claude/skills/exec-briefing/SKILL.md`.
    - Relay the executive summary from `final.md` and the one-line posture
      from the stakeholder briefing, with pointers to both files.
+   - **Do NOT close the case yet.** Phase 6 must run before sign-off.
+
+6. **Phase 6 — QA** (blocking; gate before sign-off)
+   - Invoke `dfir-qa` once. It cross-checks every case document against
+     the authoritative artifacts on disk, enforces the lead-status
+     terminal invariant, gates on intake completeness, and corrects
+     numerical / labeling / lead-status errors in place via `Edit`.
+   - Possible verdicts:
+     - `PASS` — no changes required; case ready to sign off.
+     - `PASS-WITH-CHANGES` — corrections applied; case ready to sign
+       off. Relay the QA agent's edit count and lead-transition count
+       to the user.
+     - `BLOCKED` — a fix would require new analysis (e.g. a
+       reconciliation that flips a headline). Relay the BLOCKED
+       items to the user and dispatch a focused Phase 3 lead or a
+       Phase 4 re-correlation as appropriate. Re-run Phase 5 if
+       headlines changed; re-run Phase 6 after.
+   - Hard stop after the second QA pass. If still BLOCKED, surface
+     to the user.
+   - On `PASS` / `PASS-WITH-CHANGES`, relay `reports/qa-review.md`
+     pointer to the user and mark the case CLOSED.
 
 ## Context hygiene rules (orchestrator)
 
@@ -158,10 +180,15 @@ earlier phases. On resume:
      - Correlation stable → Phase 5.
 4. Check for `./reports/final.md`:
    - Missing → run Phase 5.
-   - Present → relay its executive summary, confirm done.
+   - Present → check `./reports/qa-review.md`.
+     - Missing → run Phase 6.
+     - Present with verdict `BLOCKED` → re-dispatch the leads it
+       called out, then re-run Phase 5 / Phase 6.
+     - Present with verdict `PASS` or `PASS-WITH-CHANGES` → relay the
+       executive summary from `final.md`, confirm done.
 
-Never delete or truncate `leads.md`, `findings.md`, or `correlation.md` on
-resume. They are the chain-of-custody trail.
+Never delete or truncate `leads.md`, `findings.md`, `correlation.md`, or
+`qa-review.md` on resume. They are the chain-of-custody trail.
 
 ## When to use single-phase mode instead
 
@@ -190,3 +217,29 @@ when the question is open-ended enough that multiple domains will be touched.
 - `status`: `open` → `in-progress` → `confirmed` / `refuted` / `escalated` / `blocked`.
 - Investigator updates its lead's `status` before and after its work.
 - Correlator may add `L-CORR-*` rows; it must not modify existing rows.
+
+## Lead terminal-status invariant
+
+**No lead may sit in `escalated` once its child is terminal.** `escalated`
+is a transitional state: it means "I delegated my hypothesis to a child
+lead." When the child lands in `confirmed` / `refuted`, the parent's
+hypothesis has been answered through the child and the parent must
+transition to a terminal status as well.
+
+Acceptable end-of-case lead states:
+- `confirmed` / `refuted` — terminal.
+- `open` — only if `priority=low` AND the row's `notes` field carries an
+  explicit non-blocking justification (e.g. "low priority — does not
+  affect any headline; surfaced for completeness only").
+- `blocked` — only if `notes` documents an external dependency (missing
+  evidence, unavailable tool, awaiting host-side data).
+
+Anything else at case close is a discipline failure caught by the QA
+phase. The QA agent will transition lingering `escalated` parents to
+their child's terminal verdict and reset stale `in-progress` rows to
+`open` for re-dispatch.
+
+The orchestrator runs `bash .claude/skills/dfir-bootstrap/leads-check.sh`
+as a gate before Phase 4 (correlation), Phase 5 (report), and Phase 6
+(QA). A nonzero exit forces a focused remediation wave before
+proceeding.

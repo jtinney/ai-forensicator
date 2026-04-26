@@ -14,7 +14,7 @@ directly if the case prompt names one (e.g., "memory image" → memory-analysis,
 
 ## Overview
 Use this skill **at the start of every case**, before invoking any other DFIR skill.
-It does six things:
+It does eight things:
 
 1. **Preflight** — inventories the SIFT instance's actually-available tools/libraries
    so the rest of the workflow doesn't burn calls discovering gaps mid-analysis. Now
@@ -28,22 +28,38 @@ It does six things:
    tar / tar.gz / 7z bundle to `./analysis/_extracted/<basename>/`, hashes every
    extracted member, and seeds `./analysis/manifest.md` with `bundle:*` and
    `bundle-member` rows so analytic units (the contents inside a bundle) are
-   tracked individually rather than only at the bundle level.
-4. **Audit-log enforcement** — `audit.sh` is the only sanctioned writer of
+   tracked individually rather than only at the bundle level. **Locks
+   `./evidence/` read-only at the filesystem level** (`chmod -R a-w` on every
+   file plus `chmod a-w` on the dir itself) so a stray `>` redirect, `mv`, or
+   `tee` cannot mutate evidence even if the harness hook is bypassed.
+4. **Intake interview** — `intake-check.sh` returns nonzero if any
+   chain-of-custody field in `reports/00_intake.md` is blank;
+   `intake-interview.sh` prompts the operator (TTY) or accepts
+   `INTAKE_*` env vars (non-TTY) to fill the gaps. The interview is
+   **not optional** and Phases 4 / 5 / 6 refuse to run without it.
+5. **Audit-log enforcement** — `audit.sh` is the only sanctioned writer of
    `./analysis/forensic_audit.log`. The PreToolUse hook in
    `.claude/settings.json` denies direct `>>` / `tee -a` / `sed -i` writes to
    the log; the PostToolUse hook (`audit-verify.sh`) detects synthetic
    timestamps written via Python or other bypass paths and appends an
-   `INTEGRITY-VIOLATION` row. `audit-retrofit.sh` is an offline checker for
-   pre-existing audit logs (used to retro-audit case7).
-5. **Per-domain baseline-artifact contracts** — each domain SKILL.md declares
+   `INTEGRITY-VIOLATION` row. `audit.sh` itself rejects vague action names,
+   empty result/next-step fields, and rapid-duplicate rows (5-second window).
+   The Stop hook (`audit-stop.sh`) only logs a session boundary when the
+   prior session actually produced work — no more 50% stop_hook spam.
+   `audit-retrofit.sh` is an offline checker for pre-existing audit logs.
+6. **Per-domain baseline-artifact contracts** — each domain SKILL.md declares
    a `<!-- baseline-artifacts -->` block listing the structured artifacts the
    surveyor must produce. `baseline-check.sh <DOMAIN>` parses the block and
    tests each path; the orchestrator and correlator both invoke it to surface
    `L-BASELINE-<DOMAIN>-<NN>` leads when a baseline is missing, and that lead
    runs FIRST in the next investigator wave (post-case7 hardening: case7
    skipped Zeek + Suricata baselines despite preflight reporting them GREEN).
-6. **Stdlib fallback parsers** — Python scripts in `parsers/` that substitute
+7. **Lead terminal-status invariant** — `leads-check.sh` returns nonzero if
+   any lead is non-terminal at case close (escalated parents whose children
+   are terminal must transition; in-progress rows are stale; high/med open
+   rows must be worked or downgraded with documented justification). The
+   orchestrator runs it as a gate before Phases 4 / 5 / 6.
+8. **Stdlib fallback parsers** — Python scripts in `parsers/` that substitute
    for missing EZ Tools / regipy / python-evtx when those are absent. They
    cover the artifact types most cases actually pivot on (Recycle Bin,
    Prefetch, registry hive strings).

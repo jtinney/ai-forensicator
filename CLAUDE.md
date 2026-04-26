@@ -15,6 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Operator Preferences
 
 - **NEVER ask questions during a task.** Run every workflow fully autonomously start-to-finish. No check-ins, no confirmations, no "shall I proceed?". Deliver final findings only. If blocked, pick the most reasonable path and note it in the output.
+- **EXCEPTION: intake interview.** Chain-of-custody fields in `reports/00_intake.md` are NOT optional. If `bash .claude/skills/dfir-bootstrap/intake-check.sh` reports any blank field, run `bash .claude/skills/dfir-bootstrap/intake-interview.sh` and ask the user. The interview blocks Phases 4 / 5 / 6 until complete. This is the ONE place agent autonomy yields to operator input — the case has no foundation without intake.
 
 ---
 
@@ -27,12 +28,29 @@ Before touching evidence on a new case or a new SIFT instance:
    Trust the preflight output over this file when they disagree.
 2. **Scaffold the case:** `bash .claude/skills/dfir-bootstrap/case-init.sh <CASE_ID>`
    Creates `./analysis/`, `./exports/`, `./reports/` with `findings.md` stubs and an
-   initialized `forensic_audit.log`.
+   initialized `forensic_audit.log`. **Locks the `./evidence/` directory read-only at
+   the filesystem level (`chmod a-w`)** — combined with the PreToolUse harness hook,
+   this gives belt-and-suspenders protection against accidental mutation. **Triggers
+   the intake interview** if `reports/00_intake.md` has any blank chain-of-custody
+   field; in non-TTY mode it leaves `./analysis/.intake-pending` for the orchestrator
+   to surface.
 3. **Follow the Analysis Discipline contract** (documented in every skill's SKILL.md):
    append an entry to `./analysis/forensic_audit.log` after every distinct action, and
    append a finding entry to the matching `./analysis/<domain>/findings.md` after every
    pivot. If either file has no new entries after a skill's workflow runs, that is a
    discipline failure — backfill before moving on.
+
+### Case-close gates
+
+A case is not CLOSED until all five gates pass:
+
+| Gate | Script | Enforced where |
+|------|--------|----------------|
+| Intake fields populated | `intake-check.sh` | Phases 4 / 5 / 6 |
+| All leads in terminal status | `leads-check.sh` | Phases 4 / 5 / 6 |
+| Per-domain baseline artifacts present | `baseline-check.sh` | Phase 4 |
+| QA pass produced | Phase 6 (`dfir-qa`) | Sign-off |
+| Final + stakeholder report present | Phase 5 (`dfir-reporter`) | Sign-off |
 
 ---
 
@@ -98,10 +116,12 @@ workbook-update       # update FOR508 workbook
 
 > **If the case has ≥2 evidence items, or is open-ended enough to touch
 > multiple domains** — use phase-based multi-agent orchestration via
-> `@.claude/skills/ORCHESTRATE.md`. The orchestrator dispatches the five
+> `@.claude/skills/ORCHESTRATE.md`. The orchestrator dispatches the six
 > phase agents (`dfir-triage`, `dfir-surveyor`, `dfir-investigator`,
-> `dfir-correlator`, `dfir-reporter`) so raw tool output stays on disk and
-> the main context holds only pointers.
+> `dfir-correlator`, `dfir-reporter`, `dfir-qa`) so raw tool output stays
+> on disk and the main context holds only pointers. Phase 6 QA has
+> authority to correct numerical / labeling / lead-status mistakes in
+> place before sign-off.
 >
 > **If the case has a single evidence item and no specific lead** — start at
 > `@.claude/skills/TRIAGE.md`. It runs the unguided protocol

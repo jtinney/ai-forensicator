@@ -63,20 +63,47 @@ echo "[case-init] directory tree OK"
 AUDIT="./analysis/forensic_audit.log"
 AUDIT_SH="$(dirname "${BASH_SOURCE[0]}")/audit.sh"
 if [[ ! -f "$AUDIT" ]]; then
+    # Fresh case: write a clean canonical header and a single open-of-case row.
+    # Do NOT carry over noise from prior `claude` sessions in the same dir —
+    # if those exist they are not part of this case's chain of custody.
     cat > "$AUDIT" <<EOF
 # Forensic audit log — $CASE_ID
 # Format: <UTC timestamp> | <action> | <finding/result> | <next step>
 # Initialized: $UTC_NOW
-# Append with: bash .claude/skills/dfir-bootstrap/audit.sh "<action>" "<result>" "<next>"
+# Append ONLY via: bash .claude/skills/dfir-bootstrap/audit.sh "<action>" "<result>" "<next>"
+# Direct >>, tee -a, sed -i, cp, mv, python open() are denied at the harness level.
 EOF
-    # Use audit.sh so the scaffold entry has the canonical wall-clock timestamp
-    bash "$AUDIT_SH" "case-init" "scaffold created for $CASE_ID" "run preflight.sh + intake evidence" >/dev/null 2>&1 \
-        || echo "$UTC_NOW | case-init | scaffold created for $CASE_ID | run preflight.sh + intake evidence" >> "$AUDIT"
-    echo "[case-init] forensic_audit.log initialized"
+    bash "$AUDIT_SH" "case-init" "scaffold created for $CASE_ID" "run preflight.sh + intake interview" >/dev/null 2>&1 \
+        || echo "$UTC_NOW | case-init | scaffold created for $CASE_ID | run preflight.sh + intake interview" >> "$AUDIT"
+    echo "[case-init] forensic_audit.log initialized (clean)"
 else
-    bash "$AUDIT_SH" "case-init" "scaffold re-verified for $CASE_ID" "continue prior analysis" >/dev/null 2>&1 \
-        || echo "$UTC_NOW | case-init | scaffold re-verified for $CASE_ID | continue prior analysis" >> "$AUDIT"
-    echo "[case-init] forensic_audit.log already existed — appended re-init entry"
+    # Pre-existing log: do not modify history. If the log carries pre-case
+    # noise (entries dated before this scaffold), archive it so chain-of-
+    # custody for THIS case starts here. Detect by reading the first
+    # timestamp; if older than 24h before the scaffold, archive.
+    first_ts="$(grep -m1 -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} UTC' "$AUDIT" 2>/dev/null || true)"
+    if [[ -n "$first_ts" ]]; then
+        first_epoch="$(date -u -d "$first_ts" +%s 2>/dev/null || echo 0)"
+        now_epoch="$(date -u +%s)"
+        gap_h=$(( (now_epoch - first_epoch) / 3600 ))
+        if [[ "$first_epoch" -gt 0 && "$gap_h" -gt 24 ]]; then
+            archive="${AUDIT}.pre-${CASE_ID}.archive"
+            cp "$AUDIT" "$archive" 2>/dev/null && {
+                cat > "$AUDIT" <<EOF
+# Forensic audit log — $CASE_ID
+# Format: <UTC timestamp> | <action> | <finding/result> | <next step>
+# Re-initialized: $UTC_NOW (prior log archived to $(basename "$archive"))
+# Append ONLY via: bash .claude/skills/dfir-bootstrap/audit.sh "<action>" "<result>" "<next>"
+EOF
+                bash "$AUDIT_SH" "case-init" "scaffold re-initialized for $CASE_ID; pre-case noise archived to $(basename "$archive")" "continue analysis" >/dev/null 2>&1 || true
+                echo "[case-init] pre-case audit log archived to $(basename "$archive")"
+            }
+        else
+            bash "$AUDIT_SH" "case-init" "scaffold re-verified for $CASE_ID" "continue prior analysis" >/dev/null 2>&1 \
+                || echo "$UTC_NOW | case-init | scaffold re-verified for $CASE_ID | continue prior analysis" >> "$AUDIT"
+            echo "[case-init] forensic_audit.log already existed — appended re-init entry"
+        fi
+    fi
 fi
 
 # ---------- evidence bundle expansion + per-member hashing ----------
@@ -135,6 +162,25 @@ next_ev_id() {
 }
 
 if [[ -d "$EVIDENCE_DIR" ]]; then
+    # ---- evidence directory hardening ----
+    # Strip write permission from every evidence file and the directory
+    # itself BEFORE we walk it. This is belt-and-suspenders: the
+    # PreToolUse hook denies write attempts at the harness level, and the
+    # filesystem itself denies them at the kernel level. Combined, an
+    # accidental `>` redirect or `mv` cannot mutate evidence.
+    #
+    # Owner can still re-add write with `chmod u+w` if a legitimate
+    # custodial action requires it (re-acquisition, evidence return).
+    # But no agent operating under default permissions can mutate a file.
+    #
+    # Idempotent: skips if mode is already locked.
+    chmod -R a-w "$EVIDENCE_DIR" 2>/dev/null || true
+    chmod a-w "$EVIDENCE_DIR" 2>/dev/null || true
+    bash "$AUDIT_SH" "case-init evidence-lock" \
+        "stripped write bits from $EVIDENCE_DIR (a-w on dir + recursive)" \
+        "chmod u+w only with documented chain-of-custody justification" >/dev/null 2>&1 || true
+    echo "[case-init] $EVIDENCE_DIR locked read-only (a-w)"
+
     # Use a NUL-delimited, depth-1 sweep of evidence/. Skip dotfiles.
     while IFS= read -r -d '' f; do
         [[ -d "$f" ]] && continue
@@ -311,6 +357,34 @@ if [[ -f ./.gitignore ]]; then
        || ! grep -qE '^(exports|\./exports)/?$' ./.gitignore 2>/dev/null \
        || ! grep -qE '^(reports|\./reports)/?$' ./.gitignore 2>/dev/null; then
         echo "[case-init] WARNING: ./.gitignore may not exclude analysis/ exports/ reports/ — verify before committing"
+    fi
+fi
+
+# ---------- intake interview (chain-of-custody fields are NOT optional) ----------
+# If 00_intake.md has any blank chain-of-custody field, run the interview.
+# In TTY mode the operator is prompted. In non-TTY mode the script writes
+# ./analysis/.intake-pending and exits nonzero — Phase 1 (triage) then
+# surfaces the pending interview to the user via the orchestrator.
+INTAKE_CHECK_SH="$(dirname "${BASH_SOURCE[0]}")/intake-check.sh"
+INTAKE_INTERVIEW_SH="$(dirname "${BASH_SOURCE[0]}")/intake-interview.sh"
+if [[ -x "$INTAKE_CHECK_SH" ]]; then
+    if ! bash "$INTAKE_CHECK_SH" >/dev/null 2>&1; then
+        echo "[case-init] intake has blank fields — launching interview"
+        if [[ -x "$INTAKE_INTERVIEW_SH" ]]; then
+            bash "$INTAKE_INTERVIEW_SH" || {
+                rc=$?
+                if [[ $rc -eq 3 ]]; then
+                    echo "[case-init] WARN: no TTY available for intake interview;"
+                    echo "[case-init]       wrote ./analysis/.intake-pending — orchestrator must surface to user"
+                else
+                    echo "[case-init] WARN: intake interview exited $rc — re-run manually"
+                fi
+            }
+        else
+            echo "[case-init] WARN: $INTAKE_INTERVIEW_SH not executable — fix permissions"
+        fi
+    else
+        echo "[case-init] intake fields already populated — skipping interview"
     fi
 fi
 

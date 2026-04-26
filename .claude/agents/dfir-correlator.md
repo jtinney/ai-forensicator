@@ -27,6 +27,19 @@ it right, because downstream phases do no additional reasoning.
 1. Glob all `findings.md` under `./analysis/`. Extract entries whose
    corresponding `leads.md` row has `status=confirmed` or has a stated
    confidence of `high`. Skip `refuted` and `blocked`.
+1.4. **Intake-completeness gate (DISCIPLINE rule J).** Run
+   `bash .claude/skills/dfir-bootstrap/intake-check.sh`. If it returns
+   nonzero, return to the orchestrator with an explicit
+   `INTAKE-INCOMPLETE` blocker — do NOT correlate against a case with a
+   blank chain-of-custody record.
+1.45. **Lead terminal-status gate (DISCIPLINE rule I).** Run
+   `bash .claude/skills/dfir-bootstrap/leads-check.sh`. If it returns
+   nonzero, return to the orchestrator with an explicit
+   `LEADS-INCOMPLETE` blocker listing the violating lead IDs — do NOT
+   correlate around a leads queue with non-terminal rows. The
+   investigator owns transitioning escalated parents to terminal status
+   when their children close; this gate exists to catch the cases where
+   that didn't happen.
 1.5. **Baseline-artifact gate (BEFORE reasoning).** For each domain that has
    a non-empty `./analysis/<DOMAIN>/findings.md`, run
    `bash .claude/skills/dfir-bootstrap/baseline-check.sh <DOMAIN>`. Parse the

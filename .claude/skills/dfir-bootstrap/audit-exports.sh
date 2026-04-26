@@ -69,27 +69,40 @@ fi
 
 UTC_NOW="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
 
-# Collect existing manifest rows (path -> sha256) — gawk is on every SIFT
+# Collect existing manifest rows (path -> latest_sha|latest_event). When a
+# path has multiple rows (legitimate MUTATED chain), the LAST row wins so a
+# subsequent re-scan compares against the most recently recorded sha — not
+# the first-seen one. This fixes the bug where MUTATED rows cited the
+# wrong "previous sha".
 declare -A KNOWN_SHA=()
 while IFS= read -r row; do
     # row format: "| <path> | <size> | <sha> | <utc> | <event> | <notes> |"
-    # Strip leading "| " and split by " | ". We only need fields 1 (path) and 3 (sha).
     p="$(echo "$row" | awk -F' \\| ' '{print $1}' | sed -E 's/^\| //')"
     s="$(echo "$row" | awk -F' \\| ' '{print $3}')"
     e="$(echo "$row" | awk -F' \\| ' '{print $5}')"
     [[ -z "$p" || -z "$s" ]] && continue
-    # If we have multiple rows for the same path (e.g. a MUTATED row), the LAST
-    # row wins — that represents the current claimed sha256.
+    # Last write wins (file is read top-to-bottom; later rows override).
     KNOWN_SHA["$p"]="$s|$e"
 done < <(grep -E '^\| (\./|/)' "$MANIFEST" 2>/dev/null || true)
 
 new_count=0
 mutated_count=0
 unchanged_count=0
+suppressed_count=0
 
-# Walk every file under ./exports/
+# Walk every file under ./exports/. We skip files whose mtime is < 2s old —
+# they may still be mid-write (mergecap, tcpflow, tshark --export-objects
+# all stream output). Hashing a partial file produces a phantom first-seen
+# row, then a phantom MUTATED row at the next scan. Waiting 2s lets the
+# writer drain.
+NOW_EPOCH=$(date -u +%s)
 while IFS= read -r -d '' f; do
     rel="$f"   # already starts with ./exports/
+    mtime=$(stat -c%Y "$f" 2>/dev/null || echo 0)
+    if [[ "$mtime" -gt 0 && $((NOW_EPOCH - mtime)) -lt 2 ]]; then
+        suppressed_count=$((suppressed_count + 1))
+        continue
+    fi
     size=$(stat -c%s "$f" 2>/dev/null || echo 0)
     sha=$(sha256sum "$f" 2>/dev/null | awk '{print $1}')
     [[ -z "$sha" ]] && continue
@@ -101,16 +114,22 @@ while IFS= read -r -d '' f; do
             unchanged_count=$((unchanged_count + 1))
             continue
         fi
-        # Mutation detected — append MUTATED row
+        # Mutation detected — append MUTATED row citing the immediately-prior
+        # sha (KNOWN_SHA holds the last row's sha after the loop above).
         printf "| %s | %s | %s | %s | MUTATED | previous sha %s (event=%s) — extracted artifact mutated; investigate |\n" \
             "$rel" "$size" "$sha" "$UTC_NOW" "$prev" "$prev_event" \
             >> "$MANIFEST"
+        # Update the in-memory map so a same-run second mutation chains correctly.
+        KNOWN_SHA["$rel"]="$sha|MUTATED"
         mutated_count=$((mutated_count + 1))
     else
         # First sighting
         printf "| %s | %s | %s | %s | first-seen |  |\n" \
             "$rel" "$size" "$sha" "$UTC_NOW" \
             >> "$MANIFEST"
+        # Update the map immediately so a same-run double-fire of the hook
+        # does NOT register a second first-seen for the same path.
+        KNOWN_SHA["$rel"]="$sha|first-seen"
         new_count=$((new_count + 1))
     fi
 done < <(find "$EXPORTS" -type f -print0 2>/dev/null)

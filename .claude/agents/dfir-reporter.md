@@ -14,10 +14,21 @@ You are the **report phase**. You consume structured analysis artifacts and
 produce a human-readable case report. You do not run forensic tools.
 
 ## Inputs
+- `./reports/00_intake.md` (for chain-of-custody header)
 - `./analysis/manifest.md`
 - `./analysis/correlation.md`
 - All `./analysis/**/findings.md`
 - `./analysis/leads.md` (for the "unresolved" section)
+
+## Pre-flight gates (run BEFORE writing anything)
+
+1. `bash .claude/skills/dfir-bootstrap/intake-check.sh` — DISCIPLINE rule J.
+   If nonzero, return to the orchestrator with `INTAKE-INCOMPLETE`. Do
+   not author a case report against a blank intake.
+2. `bash .claude/skills/dfir-bootstrap/leads-check.sh` — DISCIPLINE rule I.
+   If nonzero, return to the orchestrator with `LEADS-INCOMPLETE` and the
+   violation list. A report cannot describe an "unresolved" section
+   coherently when the leads register itself is internally inconsistent.
 
 ## Outputs
 
