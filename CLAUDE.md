@@ -61,7 +61,7 @@ Before touching evidence on a new case or a new SIFT instance:
 | **YARA** | `/usr/local/bin/yara` (v4.1.0) | typically present | |
 | **bulk_extractor** | `bulk_extractor` (v2.0.3) | typically present | Defaults to 4 threads |
 | **photorec** | `sudo photorec` | typically present | File carving by signature |
-| **Volatility 3** | `python3 /opt/volatility3-2.20.0/vol.py` | optional install | Do NOT use `/usr/local/bin/vol.py` — that is Vol2 |
+| **Volatility 3** | `/opt/volatility3/vol.py` (symlink → versioned dir; `install-tools.sh` maintains it) | optional install | Do NOT use `/usr/local/bin/vol.py` — that is Vol2. `vol.py` is executable; baseline.py is not (use `python3 /opt/volatility3/baseline.py`). |
 | **Memory Baseliner** | `python3 /opt/volatility3/baseline.py` | optional install (csababarta/memory-baseliner) | Uses Vol3 as a library — files live next to `vol.py`, not in a standalone dir |
 | **EZ Tools (root)** | `dotnet /opt/zimmermantools/<Tool>.dll` | **often absent** — verify via preflight | Falls back to `.claude/skills/dfir-bootstrap/parsers/*` |
 | **EZ Tools (subdir)** | `dotnet /opt/zimmermantools/<Subdir>/<Tool>.dll` | **often absent** — verify via preflight | e.g. `EvtxeCmd/EvtxECmd.dll` |

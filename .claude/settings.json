@@ -37,7 +37,7 @@
       "Bash(log2timeline.py:*)",
       "Bash(psort.py:*)",
       "Bash(pinfo.py:*)",
-      "Bash(python3 /opt/volatility3-2.20.0/vol.py:*)",
+      "Bash(/opt/volatility3/vol.py:*)",
       "Bash(python3 /opt/volatility3/baseline.py:*)",
       "Bash(file:*)",
       "Bash(sha256sum:*)",
