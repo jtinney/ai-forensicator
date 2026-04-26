@@ -20,12 +20,13 @@ opposite stance:
    to. This is not a lint rule — it is the foundation of a defensible
    chain of custody.
 2. **Deterministic tools generate facts; the model only reasons over
-   them.** Sleuth Kit, Plaso, Volatility 3, YARA, bulk_extractor, and
-   (when present) the Zimmerman EZ Tools do the parsing. The agent picks
-   which tool, supplies flags, verifies exit codes, and interprets the
-   output. It never fabricates artifact contents. If a claim is not
-   backed by a tool invocation logged in `forensic_audit.log`, it does
-   not go in the report.
+   them.** Sleuth Kit, Plaso, Volatility 3, YARA, bulk_extractor, the
+   network-forensics stack (tshark / Zeek / Suricata), Sigma-driven EVTX
+   hunters (Chainsaw / Hayabusa), and (when present) the Zimmerman EZ
+   Tools do the parsing. The agent picks which tool, supplies flags,
+   verifies exit codes, and interprets the output. It never fabricates
+   artifact contents. If a claim is not backed by a tool invocation
+   logged in `forensic_audit.log`, it does not go in the report.
 3. **Raw output stays on disk. Context holds pointers.** Every phase
    writes its artifacts to a known path; the next phase reads only the
    headers, the leads queue, and line-anchored pointers into those
@@ -116,9 +117,11 @@ that multiple domains will get touched.
 - `CLAUDE.md` — operator contract: case-start protocol, forensic
   constraints, tool-routing table.
 - `.claude/skills/` — domain skills (`sleuthkit`, `plaso-timeline`,
-  `memory-analysis`, `windows-artifacts`, `yara-hunting`), the bootstrap
-  skill (`dfir-bootstrap` — preflight, `case-init.sh`, stdlib fallback
-  parsers for when EZ Tools / regipy / python-evtx are absent), the
+  `memory-analysis`, `windows-artifacts`, `network-forensics`,
+  `yara-hunting`, `sigma-hunting`), the bootstrap skill
+  (`dfir-bootstrap` — preflight, `case-init.sh`, `install-tools.sh`,
+  stdlib fallback parsers for when EZ Tools / regipy / python-evtx are
+  absent), the shared chain-of-custody rules (`dfir-discipline`), the
   reporting skill (`exec-briefing`), and the two entrypoints
   (`ORCHESTRATE.md`, `TRIAGE.md`).
 - `.claude/agents/` — the five phase agents (`dfir-triage`,
