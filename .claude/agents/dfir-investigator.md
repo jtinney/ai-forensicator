@@ -56,6 +56,14 @@ follow-up lead. You do not survey; you do not report.
 5. Run targeted tool passes from the skill's tool-selection table. Prefer
    narrow queries (specific event IDs, specific paths, specific process PIDs)
    over bulk dumps.
+   - **Network-domain leads:** read the surveyor's pre-computed
+     `./analysis/network/flow-index.csv` and the matching slice pcap
+     (`./exports/network/slices/{dns,http,tls}.pcap`) BEFORE re-running
+     anything against the original `./evidence/*.pcap`. The slice is a tiny
+     fraction of the original and answers most "is X in here?" questions in
+     seconds. Fall back to the original pcap only when the lead requires
+     byte-level evidence the slice does not preserve (specific stream
+     contents outside the slice's BPF, file carving, raw bytes).
 6. Outcome — one of:
    - **Confirmed**: cite the artifacts (path + line/row) that prove it. Set
      `status=confirmed` in `leads.md`.

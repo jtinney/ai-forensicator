@@ -23,8 +23,15 @@ inventory only.
 1. Redirect preflight to disk (do not tee to stdout — it is ~300 lines):
    ```bash
    bash .claude/skills/dfir-bootstrap/preflight.sh > ./analysis/preflight.md 2>&1
-   grep -E 'MISSING|RED|BLOCKED|Preflight Summary' ./analysis/preflight.md | head -30
+   grep '^SKILL_STATUS:' ./analysis/preflight.md
    ```
+   These 7 lines are the authoritative readiness signal — one per forensic domain.
+   `GREEN` or `YELLOW` means the domain is usable. `RED` means it is genuinely blocked.
+
+   **Do NOT use the `## dpkg packages` section to determine tool availability.**
+   Tools installed from upstream source (e.g. Zeek from OpenSUSE OBS) appear as
+   `MISSING` in the dpkg table while the binary is present on PATH and the domain
+   is `GREEN` in `SKILL_STATUS:`. The dpkg section is informational only.
 2. `bash .claude/skills/dfir-bootstrap/case-init.sh "$CASE_ID"`
    — case-init now (a) creates the analysis/_extracted/ directory, (b)
    walks ./evidence/, (c) sha256-hashes every file, (d) for any zip / tar /
@@ -61,7 +68,7 @@ inventory only.
    entry MUST include `discipline_v1_loaded` in the result field.
 
 ## Output (return to orchestrator, ≤200 words)
-- Case ID, preflight summary (missing/red rows only — not the full report), evidence count by type
+- Case ID, preflight summary (SKILL_STATUS RED domains only — list each by label; do NOT cite dpkg MISSING rows as blocked), evidence count by type
 - Pointer: `./analysis/manifest.md`
 - Any items that could not be classified and why
 

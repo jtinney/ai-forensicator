@@ -109,6 +109,16 @@ Output `./analysis/preflight.md` is a structured inventory:
 Read it before touching evidence. If a skill is red, either ask the user to install
 the missing piece, or jump straight to the fallback parser list below.
 
+**Binary vs. dpkg split:** `preflight.sh` uses two independent checks. The Core CLI
+section uses `command -v` (binary on `$PATH`). The dpkg section uses `dpkg -s`
+(apt-managed packages only). A tool installed from an upstream source (e.g. Zeek from
+OpenSUSE OBS at `/usr/local/bin/zeek`) passes the binary check and fails the dpkg
+check — both are correct. **The authoritative readiness signal is the `SKILL_STATUS:`
+sentinel lines** at the end of the report (`grep '^SKILL_STATUS:' preflight.md`). These
+are derived from binary checks, not dpkg, and are what agents must read to determine
+which domains are usable. The dpkg rows exist for package-management auditing, not
+skill routing.
+
 ### 2. Install only what is missing (when preflight has gaps)
 
 ```bash
@@ -335,7 +345,7 @@ grep -iE "usbstor|disk&ven" ./analysis/windows-artifacts/hives/SYSTEM.strings.tx
 | Script | Purpose |
 |---|---|
 | `preflight.sh` | Inventory CLI / Python / EZ Tools / dpkg / ET Open ruleset; emit per-skill GREEN/YELLOW/RED. Idempotent, side-effect-free. |
-| `install-tools.sh` | Install missing tools (apt + pip + dotnet + EZ Tools). `--check` for dry inventory. ET Open sync is a hard fail if it errors. |
+| `install-tools.sh` | Install missing tools (apt + pip + dotnet + EZ Tools + Sigma hunters: Chainsaw / Hayabusa / evtx_dump). `--check` for dry inventory. ET Open sync is a hard fail if it errors. |
 | `case-init.sh <CASE_ID>` | Scaffold `./analysis/`, `./exports/`, `./reports/`. Walk `./evidence/` and expand bundles. Seed manifest.md with sha256 per file + per bundle member. Idempotent — safe to re-run. |
 | `audit.sh "<action>" "<result>" "<next>"` | Append one well-formed wall-clock UTC row to forensic_audit.log. Rejects vague actions. The ONLY sanctioned writer of the audit log. |
 | `audit-pretool-deny.sh` | PreToolUse hook on Bash. Denies `>>` / `tee -a` / `sed -i` to forensic_audit.log. Allows reads (cat/head/tail/grep/Read). Allows audit.sh / audit-verify.sh / audit-retrofit.sh. |

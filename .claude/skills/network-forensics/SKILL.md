@@ -19,12 +19,22 @@ or network log is available — go to `windows-artifacts` (DNS-Client EVTX,
 Sysmon ID 3, SRUM bytes) or `memory-analysis` (`windows.netscan`) for the
 host's view of network activity instead.
 
-> **Resource constraint — serial tool execution required**
-> tshark, Zeek, and Suricata each replay the entire capture file and are
-> CPU/RAM-bound. Within a single surveyor or investigator invocation, run them
-> **serially** (one completes before the next starts). Do NOT fan them out as
-> parallel Bash calls — concurrent replay of a large pcap will saturate the
-> SIFT workstation and stall all agents.
+> **Tier-1 baseline runs as one parallel pass — `zeek_suricata_parallel.sh`**
+> Zeek, Suricata, and the per-protocol slice tcpdumps each replay the
+> capture file. Run them as **one parallel batch** via
+> `parsers/zeek_suricata_parallel.sh`. (No tshark in the Tier-1 batch —
+> Zeek's `dns.log`/`http.log`/`ssl.log` already cover what the legacy
+> tshark cheap-signal block produced.) The first reader warms the OS page
+> cache; subsequent readers stream from RAM, so wall clock is bounded by the
+> slowest single tool, not their sum. The orchestrator's network-domain batch
+> cap (≤2 concurrent agents) remains the safety rail across agents.
+>
+> Each tool's serial command stays in the section below as the documented
+> manual fallback — use it when the parallel script is unavailable, when only
+> one tool is installed, or when investigating a script-side bug. Free RAM
+> headroom should be roughly the pcap size (`free -m` vs `capinfos`); on a
+> memory-constrained host the second reader hits disk again and wall clock
+> degrades to the old serial baseline (still correct, just slower).
 
 ## Tool selection — pick by question
 
@@ -34,17 +44,17 @@ host's view of network activity instead.
 | Top talkers by bytes / packets | `tshark -q -z conv,ip -r <pcap>` | Built-in conversation table; sortable |
 | Protocol hierarchy (% of bytes per protocol) | `tshark -q -z io,phs -r <pcap>` | Surfaces tunneled or unexpected protocols |
 | All DNS queries with responses | `tshark -r <pcap> -Y dns -T fields -e frame.time_epoch -e dns.qry.name -e dns.a -e dns.aaaa -E separator=,` | One CSV; easy to grep / pivot |
-| TLS SNI + JA3 of every flow | `tshark -r <pcap> -Y "tls.handshake.type==1" -T fields -e frame.time_epoch -e ip.src -e ip.dst -e tls.handshake.extensions_server_name -e tls.handshake.ja3` | SNI is the only L7 hint inside encrypted traffic |
+| TLS SNI + JA3 of every flow | `tshark -r <pcap> -Y "tls.handshake.type==1" -T fields -e frame.time_epoch -e ip.src -e ip.dst -e tls.handshake.extensions_server_name -e tls.handshake.ja3` | SNI is the only L7 hint inside encrypted traffic. Native `tls.handshake.ja3` requires Wireshark ≥ 4.0; older tshark needs the `ja3.lua` plugin loaded — the SNI column is always populated regardless |
 | HTTP request URIs + Host headers | `tshark -r <pcap> -Y http.request -T fields -e frame.time_epoch -e ip.src -e ip.dst -e http.host -e http.request.uri -e http.user_agent` | Full L7 visibility for cleartext HTTP |
 | Reconstruct one TCP stream | `tshark -r <pcap> -q -z follow,tcp,raw,<stream-index>` or `tcpflow -r <pcap>` | Stream-level reassembly without GUI |
-| Carve files transferred over HTTP/SMB/SMTP/FTP | `tshark -r <pcap> --export-objects http,./exports/network/http_objects/ --export-objects smb,./exports/network/smb_objects/` (one tool per protocol) | Cleanest extraction; preserves filenames where present |
+| Carve files transferred over HTTP/SMB/SMTP/FTP | `tshark -r <pcap> --export-objects http,./exports/network/http_objects/ --export-objects smb,./exports/network/smb_objects/` (repeat the flag per protocol in the same tshark invocation) | Cleanest extraction; preserves filenames where present |
 | Slice capture by time window | `editcap -A "2026-04-18 12:00:00" -B "2026-04-18 13:00:00" in.pcap out.pcap` | Cheaper than re-running every tool against full capture |
 | Slice capture by BPF (host/port) | `tcpdump -r in.pcap -w out.pcap 'host 10.0.0.5 and port 443'` | Filter at libpcap layer — orders of magnitude faster than tshark display filters |
 | Merge multiple captures into one chronological pcap | `mergecap -w merged.pcap in1.pcap in2.pcap …` | Native; preserves nanosecond timestamps |
 | Anonymize / sanitize a capture before sharing | `tcpdump -r in.pcap -w out.pcap 'not host <internal>'` + `editcap --inject-secrets ` | Always strip before external sharing |
 | Generate Zeek logs from a pcap | `zeek -C -r <pcap> Log::default_logdir=./analysis/network/zeek/` | Single command produces 15+ structured logs |
 | Run Suricata IDS against a pcap | `suricata -r <pcap> -l ./analysis/network/suricata/ -k none` | `-k none` disables checksum validation (replay traffic often has bad checksums) |
-| Group Suricata alerts by signature | `jq -r '.alert.signature' eve.json \| sort \| uniq -c \| sort -rn` | Fastest top-N from JSONL |
+| Group Suricata alerts by signature | `jq -r 'select(.event_type=="alert") \| .alert.signature' eve.json \| sort \| uniq -c \| sort -rn` | Fastest top-N from JSONL — `select(...)` is required because eve.json mixes alert / http / dns / tls / fileinfo events |
 | Detect beaconing / C2 jitter from Zeek conn.log | `python3 .claude/skills/network-forensics/parsers/conn_beacon.py ./analysis/network/zeek/conn.log` | Stdlib FFT-free interval analysis; fast triage |
 | YARA sweep of pcap as a binary blob | `yara rules.yar <pcap>` | Catches embedded indicators in cleartext payloads |
 | Carve indicators from pcap | `bulk_extractor -e net -e url -e domain -e email -o ./exports/carved/ <pcap>` | Recovers L7 strings even from partially-corrupted captures |
@@ -123,8 +133,8 @@ you which tier of network tooling is actually available on this SIFT instance:
 
 | Tier | Tools required | Capability |
 |---|---|---|
-| **Tier 1 — Full** | `tshark` + `zeek` + `suricata` + `capinfos` | Cleartext + structured + IDS + flow analysis |
-| **Tier 2 — tshark-only** | `tshark` + `capinfos` (no Zeek/Suricata) | Display-filter analysis; manual L7 reconstruction |
+| **Tier 1 — Full** | `tshark` + `zeek` + `suricata` + ET Open ruleset (matches preflight `network-forensics: GREEN`; `capinfos` ships in `wireshark-common` alongside tshark) | Cleartext + structured + IDS + flow analysis |
+| **Tier 2 — tshark-only** | `tshark` (no Zeek/Suricata, or Suricata with no rules → preflight YELLOW) | Display-filter analysis; manual L7 reconstruction |
 | **Tier 3 — Fallback** | stdlib only | `parsers/pcap_summary.py` for triage; YARA sweep of raw pcap |
 
 Never assume Tier 1. Zeek and Suricata are routinely absent on minimal SIFT
@@ -165,9 +175,41 @@ section below maps the same questions to Tier 2/3 commands when needed.
 
 ### 0. Tier-1 baseline gate (MANDATORY when preflight is GREEN)
 
-If `./analysis/preflight.md` reports `network-forensics: GREEN` (i.e. tshark
-+ zeek + suricata are all installed), you **MUST** generate the Zeek +
-Suricata baseline before any second `tshark -Y` deep-dive query:
+If `./analysis/preflight.md` reports `network-forensics: GREEN` (tshark +
+zeek + suricata + ET Open ruleset all present), you **MUST** generate the
+parallel baseline before any second `tshark -Y` deep-dive query:
+
+```bash
+bash .claude/skills/network-forensics/parsers/zeek_suricata_parallel.sh \
+    ./evidence/case.pcap
+```
+
+That single command fans out:
+- `zeek -C -r` (structured protocol logs under `./analysis/network/zeek/`)
+- `suricata -r` (IDS alerts under `./analysis/network/suricata/`)
+- `tcpdump -w` × 3 (per-protocol slice pcaps under `./exports/network/slices/`)
+
+After Zeek finishes, the script runs `conn_to_flow_index.py` against
+`conn.log` to produce `./analysis/network/flow-index.csv` (per-IP-pair
+direction-aware byte/frame counts; the cheap "is host X in this capture?"
+lookup that lets investigators skip re-scanning the original pcap).
+
+The script audits the source pcap sha256, every per-tool exit code, and the
+sha256 + size of each slice pcap and the derived `flow-index.csv`. Zeek's
+structured logs and Suricata's `eve.json` are tracked by directory + per-tool
+exit code, not per-file hash — re-hash with `sha256sum` if a specific log is
+later cited in a finding (the `audit-exports.sh` PostToolUse hook covers
+`./exports/`, not `./analysis/`).
+
+**No tshark in the Tier-1 batch.** Zeek's `dns.log`, `http.log`, and
+`ssl.log` already cover what the legacy 7-tshark cheap-signal block produced
+— running tshark alongside would be duplicate work. `tshark_wide.py` exists
+for the Tier-2 fallback below (no Zeek installed); see § "Cheap signals
+first" and § "Fallback workflow".
+
+If the parallel script is unavailable or only some tools are installed, the
+serial fallback is the same `zeek -C -r …` and `suricata -r … -k none` calls
+that already lived here:
 
 ```bash
 mkdir -p ./analysis/network/zeek ./analysis/network/suricata
@@ -178,9 +220,9 @@ suricata -r ./evidence/case.pcap -l ./analysis/network/suricata/ -k none \
 
 **Why mandatory:** structured logs (`conn.log`, `dns.log`, `http.log`,
 `ssl.log`, `eve.json`) answer ~80% of network pivots in one pass and prevent
-the case7 anti-pattern of re-implementing them by hand via 30+ tshark
-queries. tshark deep-dives are for byte-level confirmation of what the
-baseline flags, not the primary triage.
+the anti-pattern of re-implementing them by hand via 30+ tshark queries.
+tshark deep-dives are for byte-level confirmation of what the baseline
+flags, not the primary triage.
 
 The baseline-artifacts contract below is enforced by
 `.claude/skills/dfir-bootstrap/baseline-check.sh network`. If a required
@@ -193,12 +235,18 @@ zeek or no suricata). See § "Fallback workflow" below.
 
 ### 1. Verify the capture (always)
 
+If § 0 already ran, the source-pcap sha256 is already audited in
+`./analysis/forensic_audit.log`. The commands below file an explicit
+chain-of-custody copy and produce the human-readable `capinfos` summary
+that downstream sections key off.
+
 ```bash
 # Identify file type — confirms pcap vs pcapng vs other
 file ./evidence/case.pcap
 
-# Hash for chain of custody
-sha256sum ./evidence/case.pcap | tee -a ./analysis/network/findings.md
+# Hash for chain of custody (separate from findings.md, which is for
+# interpretation; forensic_audit.log already captured this if § 0 ran)
+sha256sum ./evidence/case.pcap > ./analysis/network/source.sha256
 
 # Metadata: time range, packet count, link type, drops
 capinfos ./evidence/case.pcap | tee ./analysis/network/capinfos.txt
@@ -213,49 +261,55 @@ capinfos ./evidence/case.pcap | tee ./analysis/network/capinfos.txt
   before further analysis or some tools mis-report timing.
 - **SHA256** → record for chain of custody.
 
-If `capinfos` is unavailable, fall back to:
+If `capinfos` is unavailable, fall back to (writes the same `capinfos.txt`
+the baseline gate looks for, so a Tier-2 host doesn't fail the
+required-artifacts check):
 
 ```bash
 python3 .claude/skills/network-forensics/parsers/pcap_summary.py \
-  ./evidence/case.pcap --header-only
+  ./evidence/case.pcap --header-only > ./analysis/network/capinfos.txt
 ```
 
-### 2. Cheap signals first (~10 min)
+### 2. Cheap signals (read once Tier-1 baseline has finished)
 
-Run these in order. Stop and pivot the moment one returns something worth
-chasing.
+In Tier-1, the cheap signals are Zeek's logs themselves: `dns.log`,
+`http.log`, `ssl.log` (TLS handshakes — SNI is always present; `ja3`/`ja3s`
+populate **only** when the community `zeek-ja3` plugin is loaded, which is
+**not** part of vanilla Zeek; for guaranteed JA3 use the tshark command in
+§ "Tool selection — pick by question"), and `flow-index.csv` (derived from
+`conn.log`). If you ran `zeek_suricata_parallel.sh` per § 0, all of these
+are on disk; skip to § 3 to triage them with `zeek-cut` / `zeek_triage.py`.
 
+Quick `zeek-cut` reach-in equivalents to the legacy tshark CSVs:
 ```bash
-# 2a. Top talkers by bytes (IPv4 + IPv6 conversations)
-tshark -q -z conv,ip   -r ./evidence/case.pcap > ./analysis/network/conv-ip.txt
-tshark -q -z conv,ipv6 -r ./evidence/case.pcap > ./analysis/network/conv-ipv6.txt
+# DNS queries with answers
+zeek-cut ts id.orig_h id.resp_h query qtype_name answers \
+    < ./analysis/network/zeek/dns.log
 
-# 2b. Protocol hierarchy — surfaces tunneled / unexpected protocols
-tshark -q -z io,phs -r ./evidence/case.pcap > ./analysis/network/proto-hier.txt
+# TLS handshakes (SNI always; ja3/ja3s only if zeek-ja3 plugin loaded)
+zeek-cut ts id.orig_h id.resp_h server_name ja3 ja3s \
+    < ./analysis/network/zeek/ssl.log
 
-# 2c. DNS queries (CSV)
-tshark -r ./evidence/case.pcap -Y dns \
-  -T fields -E separator=, -E quote=d \
-  -e frame.time_epoch -e ip.src -e ip.dst \
-  -e dns.qry.name -e dns.qry.type \
-  -e dns.a -e dns.aaaa -e dns.cname \
-  > ./analysis/network/dns.csv
+# HTTP requests (cleartext)
+zeek-cut ts id.orig_h id.resp_h method host uri user_agent referrer \
+    < ./analysis/network/zeek/http.log
 
-# 2d. TLS SNI + JA3 (visible even inside encrypted traffic)
-tshark -r ./evidence/case.pcap -Y "tls.handshake.type==1" \
-  -T fields -E separator=, -E quote=d \
-  -e frame.time_epoch -e ip.src -e ip.dst -e tcp.dstport \
-  -e tls.handshake.extensions_server_name -e tls.handshake.ja3 \
-  > ./analysis/network/tls-sni.csv
-
-# 2e. HTTP requests (cleartext URIs + Host + UA)
-tshark -r ./evidence/case.pcap -Y http.request \
-  -T fields -E separator=, -E quote=d \
-  -e frame.time_epoch -e ip.src -e ip.dst \
-  -e http.host -e http.request.method -e http.request.uri \
-  -e http.user_agent -e http.referer \
-  > ./analysis/network/http.csv
+# Top peer pairs by total bytes (already pre-computed; cells are double-
+# quoted by csv.QUOTE_ALL — readable but quotes are visible)
+column -ts ',' ./analysis/network/flow-index.csv | head
 ```
+
+These read pre-parsed TSV/CSV — no pcap re-scan, no waiting on tshark.
+
+**Tier-2 fallback (no Zeek installed):** when only tshark is available, run
+`tshark_wide.py` to batch the seven legacy cheap-signal queries into one
+wide `-T fields` pass plus one `-z` stats pass. See § "Fallback workflow"
+below for the command. Do NOT run `tshark_wide.py` in addition to Zeek —
+the outputs are redundant and the second tool just burns wall-clock and RAM.
+
+If you genuinely need a one-off raw tshark query (reviewer reproducibility,
+debugging an oddity Zeek logged, etc.), reach for the canonical commands in
+the § "Tool selection — pick by question" table at the top of this file.
 
 Anomalies that should immediately pivot to deep dive:
 - DNS for known DGA-shaped domains (long random labels, base32-shaped)
@@ -270,14 +324,19 @@ Anomalies that should immediately pivot to deep dive:
 
 ### 3. Generate Zeek logs (5–60 min depending on capture size)
 
+If you ran `zeek_suricata_parallel.sh`, the Zeek logs are already on disk
+under `./analysis/network/zeek/`. Skip ahead to § 4 to triage them. The
+serial command remains the documented manual fallback when only Zeek (not
+Suricata) is installed, or when invoking community scripts:
+
 ```bash
 mkdir -p ./analysis/network/zeek/
 cd ./analysis/network/zeek/
 zeek -C -r ../../../evidence/case.pcap
 
 # Optional: enable common community scripts for richer detection
-zeek -C -r ../../../evidence/case.pcap \
-  local "Site::local_nets += { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 }"
+zeek -C -r ../../../evidence/case.pcap local \
+  -e 'redef Site::local_nets += { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 };'
 ```
 
 Flags worth knowing:
@@ -286,8 +345,13 @@ Flags worth knowing:
 - `-r <pcap>` — read mode (offline).
 - `local` — load `local.zeek` policy (enables HTTP file extraction, Notice
   framework, etc.).
-- `Site::local_nets` — defines what counts as "local" for orig/resp direction.
-  Set this to match the customer's internal ranges.
+- `-e '<zeek-statement>'` — execute an inline policy statement; the
+  canonical way to redef constants on the CLI. Bare positional `var=value`
+  also works for simple assigns; `+=` requires `-e 'redef ... += ...;'`.
+- `Site::local_nets` — scopes the Notice / scan-detector scripts' notion of
+  "internal" vs "external"; orig/resp direction itself derives from TCP SYN
+  order (or first UDP packet), not this set. Set this to match the
+  customer's internal ranges so detection scripts label hosts correctly.
 
 Zeek emits one log per protocol/concept, all under the current directory:
 
@@ -324,7 +388,8 @@ zeek-cut query < dns.log | sort | uniq -c | sort -rn | head -50
 zeek-cut id.orig_h id.resp_h duration service < conn.log \
   | awk -F'\t' '$3 > 3600' | sort -k3 -rn | head
 
-# TLS SNI sorted by JA3
+# TLS SNI sorted by JA3 (ja3/ja3s populate only with zeek-ja3 plugin loaded;
+# for vanilla Zeek, SNI is still present but JA3 columns will be empty)
 zeek-cut id.resp_h server_name ja3 ja3s < ssl.log | sort -u
 
 # Files Zeek extracted (and hashes, if enabled)
@@ -353,13 +418,15 @@ python3 .claude/skills/network-forensics/parsers/conn_beacon.py \
   > ./analysis/network/beacon-candidates.csv
 ```
 
-Outputs ranked candidates: `(src, dst, port, n_conns, mean_interval_s,
-jitter, total_bytes)`. Confirm any hit by:
+Outputs CSV ranked by `score` (descending), columns: `src, dst, port,
+n_conns, mean_interval_s, jitter, score, orig_bytes, resp_bytes, first_ts,
+last_ts`. Confirm any hit by:
 
 1. Pivoting back to `tshark` with `-Y "ip.src==<src> and ip.dst==<dst>"` and
    inspecting the cadence visually.
-2. Checking SNI / JA3 in `ssl.log` for the same flow — does the JA3 match a
-   known C2 family?
+2. Checking SNI in `ssl.log` for the same flow (and JA3 if the `zeek-ja3`
+   plugin is loaded; otherwise pull JA3 via tshark per § "Tool selection")
+   — does the JA3 match a known C2 family?
 3. Cross-referencing `<dst>` against passive-DNS / VirusTotal (offline DBs if
    no network from the analyst host).
 
@@ -367,6 +434,11 @@ When RITA is available (not standard on SIFT), it runs the same logic at
 much higher fidelity — but the fallback parser is enough for triage.
 
 ### 6. Suricata IDS pass
+
+If you ran `zeek_suricata_parallel.sh`, Suricata's `eve.json`, `fast.log`,
+and `stats.log` are already under `./analysis/network/suricata/`. The serial
+command stays as the documented manual fallback (e.g., when re-running with
+a tuned rule set or a custom `--runmode`):
 
 ```bash
 mkdir -p ./analysis/network/suricata/
@@ -415,7 +487,9 @@ cd ./exports/network/tcpflow/
 tcpflow -r ../../../evidence/case.pcap
 
 # A specific TCP stream as raw bytes (find index via tshark display first)
-tshark -r ./evidence/case.pcap -Y "tcp.stream eq 47" -w stream-47.pcap
+mkdir -p ./exports/network/streams/
+tshark -r ./evidence/case.pcap -Y "tcp.stream eq 47" \
+  -w ./exports/network/streams/stream-47.pcap
 
 # Carved indicators (URLs / emails / domains) from the pcap as a blob
 bulk_extractor -e net -e url -e domain -e email \
@@ -447,11 +521,11 @@ limit conclusions to volume + endpoint pairs and explicitly note the gap in
 ### When `tshark` is missing
 
 ```bash
-# Triage with the stdlib parser
+# Triage with the stdlib parser (DNS extraction is on by default; pass
+# --no-dns to skip it)
 python3 .claude/skills/network-forensics/parsers/pcap_summary.py \
   ./evidence/case.pcap \
   --top-talkers 20 \
-  --dns \
   > ./analysis/network/pcap-triage.csv
 
 # YARA sweep of the pcap as raw bytes
@@ -466,8 +540,22 @@ bulk_extractor -e net -e url -e domain -e email \
 ### When Zeek is missing
 
 `tshark` covers most of what `conn.log` / `dns.log` / `http.log` / `ssl.log`
-provide — see the "Cheap signals first" section above for the field-export
-commands. Beaconing detection without Zeek runs against a tshark CSV:
+provide. Use `tshark_wide.py` to batch the seven legacy cheap-signal queries
+into a single wide `-T fields` pass plus one `-z` stats pass — same outputs
+as the legacy invocations, single read instead of seven:
+
+```bash
+python3 .claude/skills/network-forensics/parsers/tshark_wide.py \
+    ./evidence/case.pcap \
+    --out-dir ./analysis/network
+```
+
+Outputs: `dns.csv`, `tls-sni.csv`, `http.csv`, `flow-index.csv`,
+`conv-ip.txt`, `conv-ipv6.txt`, `proto-hier.txt`, plus the underlying
+`wide.csv`. The `--from-csv` flag re-derives the per-protocol files from an
+existing `wide.csv` without another tshark pass.
+
+Beaconing detection without Zeek runs against a tshark CSV:
 
 ```bash
 tshark -r ./evidence/case.pcap -Y "tcp.flags.syn==1 and tcp.flags.ack==0" \
@@ -495,19 +583,24 @@ limitation (no network-protocol-aware decoding, no per-flow context) in
 | Output | Path |
 |--------|------|
 | Capture metadata | `./analysis/network/capinfos.txt` |
-| tshark conversation tables | `./analysis/network/conv-ip.txt`, `conv-ipv6.txt` |
-| tshark protocol hierarchy | `./analysis/network/proto-hier.txt` |
-| DNS / TLS / HTTP CSVs | `./analysis/network/dns.csv`, `tls-sni.csv`, `http.csv` |
-| Zeek logs | `./analysis/network/zeek/*.log` |
+| Zeek logs | `./analysis/network/zeek/*.log` (`conn`, `dns`, `http`, `ssl`, `files`, `x509`, `notice`, `weird`, ...) |
 | Zeek triage CSV | `./analysis/network/zeek-triage.csv` |
+| Flow index (per-IP-pair, derived from `conn.log`) | `./analysis/network/flow-index.csv` — schema: `family,a,b,frames_a_to_b,bytes_a_to_b,frames_b_to_a,bytes_b_to_a,frames_total,bytes_total`. Tier-1 byte counts are Zeek's `orig_ip_bytes`/`resp_ip_bytes` (IP-layer total, headers + payload). Tier-2 byte counts come from `tshark -z conv,ip` (full Ethernet frame length). The two differ by ~14 bytes per packet (Ethernet header + FCS); do not subtract one from the other when correlating across tiers |
 | Beaconing candidates | `./analysis/network/beacon-candidates.csv` |
 | Suricata logs | `./analysis/network/suricata/eve.json`, `fast.log`, `stats.log` |
 | Suricata triage CSV | `./analysis/network/suricata-alerts.csv` |
+| Per-protocol slice pcaps (DNS/HTTP/TLS) | `./exports/network/slices/dns.pcap`, `http.pcap`, `tls.pcap` |
 | Carved L7 indicators | `./exports/network/carved/` |
 | Reassembled HTTP objects | `./exports/network/http_objects/` |
 | TCP flow files | `./exports/network/tcpflow/` |
 | Per-stream pcaps | `./exports/network/streams/` |
+| Parallel-script per-tool stderr/stdout | `./analysis/network/_parallel_logs/*.log` |
 | Findings | `./analysis/network/findings.md` |
+| _Tier-2 fallback only (no Zeek)_ | |
+| tshark wide-pass CSV (per packet, raw) | `./analysis/network/wide.csv` |
+| tshark conversation tables | `./analysis/network/conv-ip.txt`, `conv-ipv6.txt` |
+| tshark protocol hierarchy | `./analysis/network/proto-hier.txt` |
+| DNS / TLS / HTTP CSVs (tshark-derived) | `./analysis/network/dns.csv`, `tls-sni.csv`, `http.csv` — `src` / `dst` columns are coalesced from `ip.*` or `ipv6.*` so IPv6 rows are not blank |
 
 Always write to `./analysis/` or `./exports/` — never to `./evidence/` or
 `/mnt/`.
@@ -526,15 +619,26 @@ investigator wave.
 <!-- baseline-artifacts:start -->
 required: analysis/network/capinfos.txt
 required-tier1: analysis/network/zeek/conn.log
-required-tier1: analysis/network/zeek/dns.log
 required-tier1: analysis/network/suricata/eve.json
-optional: analysis/network/proto-hier.txt
-optional: analysis/network/conv-ip.txt
-optional: analysis/network/conv-ipv6.txt
-optional: analysis/network/dns.csv
-optional: analysis/network/tls-sni.csv
-optional: analysis/network/http.csv
+required-tier1: analysis/network/flow-index.csv
+required-tier1: exports/network/slices/dns.pcap
+required-tier1: exports/network/slices/http.pcap
+required-tier1: exports/network/slices/tls.pcap
+optional: analysis/network/zeek/dns.log
+optional: analysis/network/zeek/http.log
+optional: analysis/network/zeek/ssl.log
+optional: analysis/network/zeek/files.log
 <!-- baseline-artifacts:end -->
+
+> Why `dns.log` / `http.log` / `ssl.log` / `files.log` are optional, not
+> required: Zeek emits per-protocol logs **only for protocols actually
+> observed in the capture**. A pcap with no DNS produces no `dns.log`; that
+> is correct behavior, not a baseline gap. `conn.log` is the only
+> per-protocol log Zeek writes unconditionally for any non-empty TCP/UDP/ICMP
+> capture, so it is the sole `required-tier1` Zeek artifact. The slice
+> pcaps are required because `tcpdump -w` always produces at least the
+> 24-byte global header, even on zero-match BPFs — investigators can still
+> verify "this BPF was applied" via the file's existence and size.
 
 ---
 

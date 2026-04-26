@@ -170,11 +170,9 @@ cat <<'EOF'
 |---|---|---|
 EOF
 
-py_check Registry || true          # python-registry
 py_check regipy || true
 py_check Evtx || true              # python-evtx (module: Evtx)
 py_check yara || true              # yara-python bindings
-py_check volatility3 || true
 py_check pyewf || true
 py_check pytsk3 || true
 py_check impacket || true
@@ -188,8 +186,45 @@ cat <<'EOF'
 | Path | Status |
 |---|---|
 EOF
-path_check /opt/volatility3-2.20.0/vol.py "Volatility 3 vol.py" || true
-path_check /opt/volatility3/baseline.py "Memory Baseliner (in vol3 dir)" || true
+
+# Discover Volatility 3 without hardcoding a version. Search common /opt layouts,
+# then fall back to vol/vol.py on PATH, then to the volatility3 Python module.
+VOL3_PATH=""
+for cand in /opt/volatility3*/vol.py /opt/volatility3/vol.py; do
+    [[ -f "$cand" ]] && VOL3_PATH="$cand" && break
+done
+if [[ -z "$VOL3_PATH" ]]; then
+    for c in vol.py vol; do
+        if command -v "$c" >/dev/null 2>&1; then
+            # reject Volatility 2 (/usr/local/bin/vol.py on stock SIFT)
+            if "$c" --help 2>&1 | grep -qiE 'volatility 3|framework 2\.'; then
+                VOL3_PATH="$(command -v "$c")"
+                break
+            fi
+        fi
+    done
+fi
+if [[ -z "$VOL3_PATH" ]] && python3 -c 'import volatility3' >/dev/null 2>&1; then
+    VOL3_PATH="(python module: volatility3)"
+fi
+if [[ -n "$VOL3_PATH" ]]; then
+    printf "| Volatility 3 vol.py | PRESENT | \`%s\` |\n" "$VOL3_PATH"
+else
+    printf "| Volatility 3 vol.py | MISSING | searched \`/opt/volatility3*/vol.py\`, PATH, python module |\n"
+    (( MISSING_COUNT++ )) || true
+fi
+
+# Memory Baseliner — co-located with vol.py per CLAUDE.md
+BASELINE_PATH=""
+for cand in /opt/volatility3*/baseline.py /opt/volatility3/baseline.py; do
+    [[ -f "$cand" ]] && BASELINE_PATH="$cand" && break
+done
+if [[ -n "$BASELINE_PATH" ]]; then
+    printf "| Memory Baseliner | PRESENT | \`%s\` |\n" "$BASELINE_PATH"
+else
+    printf "| Memory Baseliner | MISSING | searched \`/opt/volatility3*/baseline.py\` |\n"
+    (( MISSING_COUNT++ )) || true
+fi
 
 cat <<'EOF'
 
@@ -219,12 +254,10 @@ cat <<'EOF'
 EOF
 pkg_check libewf-tools || true   # GIFT package providing ewfinfo/ewfverify/ewfmount
 pkg_check libewf || true         # modern libewf shared lib (GIFT)
-pkg_check libewf2 || true        # legacy libewf 2.x — present on stock SIFT, conflicts with libewf
 pkg_check sleuthkit || true
 pkg_check libtsk19 || true
 pkg_check plaso-tools || true
 pkg_check bulk-extractor || true
-pkg_check python3-regipy || true
 pkg_check python3-evtx || true
 pkg_check python3-pip || true
 pkg_check dotnet-runtime-9.0 || true
@@ -233,7 +266,6 @@ pkg_check wireshark-common || true
 pkg_check tcpdump || true
 pkg_check tcpflow || true
 pkg_check ngrep || true
-pkg_check zeek || true
 pkg_check suricata || true
 pkg_check suricata-update || true
 pkg_check nfdump || true
@@ -332,11 +364,11 @@ else
     printf "| plaso-timeline | RED | no log2timeline.py — install \`plaso-tools\` from GIFT PPA |\n"
 fi
 
-# memory-analysis
-if [[ -f /opt/volatility3-2.20.0/vol.py ]]; then
-    printf "| memory-analysis | GREEN | Volatility 3 present |\n"
+# memory-analysis — uses the VOL3_PATH discovered above
+if [[ -n "$VOL3_PATH" ]]; then
+    printf "| memory-analysis | GREEN | Volatility 3 present (\`%s\`) |\n" "$VOL3_PATH"
 else
-    printf "| memory-analysis | RED | Volatility 3 missing at /opt/volatility3-2.20.0/ |\n"
+    printf "| memory-analysis | RED | Volatility 3 missing — searched /opt/volatility3*/vol.py, PATH, python module |\n"
 fi
 
 # yara-hunting
@@ -401,6 +433,70 @@ cat <<'EOF'
   constraints of the shell you have.
 
 EOF
+
+printf "\n## Machine-readable skill status\n"
+printf "<!-- grep for SKILL_STATUS: lines only; dpkg MISSING rows are informational -->\n\n"
+
+# sleuthkit
+if command -v fls >/dev/null 2>&1 && command -v mactime >/dev/null 2>&1 \
+   && { dpkg -s libewf >/dev/null 2>&1 || dpkg -s libewf2 >/dev/null 2>&1; }; then
+    printf "SKILL_STATUS:sleuthkit=GREEN\n"
+else
+    printf "SKILL_STATUS:sleuthkit=RED\n"
+fi
+
+# plaso-timeline
+if command -v log2timeline.py >/dev/null 2>&1; then
+    printf "SKILL_STATUS:plaso-timeline=GREEN\n"
+else
+    printf "SKILL_STATUS:plaso-timeline=RED\n"
+fi
+
+# memory-analysis — uses VOL3_PATH discovered above
+if [[ -n "$VOL3_PATH" ]]; then
+    printf "SKILL_STATUS:memory-analysis=GREEN\n"
+else
+    printf "SKILL_STATUS:memory-analysis=RED\n"
+fi
+
+# yara-hunting
+if command -v yara >/dev/null 2>&1; then
+    printf "SKILL_STATUS:yara-hunting=GREEN\n"
+else
+    printf "SKILL_STATUS:yara-hunting=RED\n"
+fi
+
+# sigma-hunting
+if command -v chainsaw >/dev/null 2>&1; then
+    printf "SKILL_STATUS:sigma-hunting=GREEN\n"
+elif command -v hayabusa >/dev/null 2>&1; then
+    printf "SKILL_STATUS:sigma-hunting=YELLOW\n"
+else
+    printf "SKILL_STATUS:sigma-hunting=RED\n"
+fi
+
+# windows-artifacts
+if [[ -d /opt/zimmermantools ]] && command -v dotnet >/dev/null 2>&1; then
+    printf "SKILL_STATUS:windows-artifacts=GREEN\n"
+elif python3 -c 'import Evtx, regipy' >/dev/null 2>&1; then
+    printf "SKILL_STATUS:windows-artifacts=YELLOW\n"
+else
+    printf "SKILL_STATUS:windows-artifacts=YELLOW\n"
+fi
+
+# network-forensics
+if command -v tshark >/dev/null 2>&1 && command -v zeek >/dev/null 2>&1 \
+   && command -v suricata >/dev/null 2>&1; then
+    if [[ -s "$SURICATA_RULES_PATH" ]]; then
+        printf "SKILL_STATUS:network-forensics=GREEN\n"
+    else
+        printf "SKILL_STATUS:network-forensics=YELLOW\n"
+    fi
+elif command -v tshark >/dev/null 2>&1; then
+    printf "SKILL_STATUS:network-forensics=YELLOW\n"
+else
+    printf "SKILL_STATUS:network-forensics=RED\n"
+fi
 
 if [[ "$MISSING_COUNT" -eq 0 ]]; then
     printf "\n## Preflight Summary\n\nAll tracked checks are present.\n"

@@ -176,6 +176,32 @@ EZ_SUBDIR_TOOLS=(
     "SQLECmd|SQLECmd|SQLECmd"
 )
 
+# Sigma / EVTX hunting tooling — Chainsaw, Hayabusa, evtx_dump.
+# All three are referenced by the sigma-hunting skill and the preflight, but
+# none ship in any apt repo we can reach on Ubuntu 22.04 — Chainsaw and
+# Hayabusa are GitHub-released static Rust binaries, and the canonical
+# evtx_dump (omerbenamram/evtx) is also a static Rust binary distributed via
+# GitHub. We try apt first for evtx_dump in case a future Ubuntu picks up an
+# `evtx-tools` package, then fall back to the GitHub release.
+#
+# Pattern strings are passed to gh_download() (which uses `grep -i` on the
+# release manifest) — they MUST match exactly one asset for the desired
+# platform on the latest release of each repo.
+SIGMA_CHAINSAW_REPO="WithSecureLabs/chainsaw"
+SIGMA_CHAINSAW_DIR="/opt/chainsaw"
+SIGMA_CHAINSAW_LINK="/usr/local/bin/chainsaw"
+SIGMA_CHAINSAW_ASSET="x86_64-unknown-linux-gnu.tar.gz"
+
+SIGMA_HAYABUSA_REPO="Yamato-Security/hayabusa"
+SIGMA_HAYABUSA_DIR="/opt/hayabusa"
+SIGMA_HAYABUSA_LINK="/usr/local/bin/hayabusa"
+SIGMA_HAYABUSA_ASSET="all-platforms.zip"
+
+SIGMA_EVTX_REPO="omerbenamram/evtx"
+SIGMA_EVTX_LINK="/usr/local/bin/evtx_dump"
+SIGMA_EVTX_ASSET="x86_64-unknown-linux-musl"
+SIGMA_EVTX_APT="evtx-tools"
+
 # ─── colour helpers ──────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -500,6 +526,9 @@ run_check_mode() {
     check_cmd_present zeek-cut
     check_cmd_present suricata
     check_cmd_present jq
+    check_cmd_present chainsaw
+    check_cmd_present hayabusa
+    check_cmd_present evtx_dump
 
     header "Python packages (pip)"
     local pkg
@@ -519,6 +548,8 @@ run_check_mode() {
     check_path_present "${EZ_DEST}/RECmd/RECmd.dll" "RECmd.dll"
     check_path_present "${EZ_DEST}/SQLECmd/SQLECmd.dll" "SQLECmd.dll"
     check_path_present "${ZEEK_PREFIX}/bin/zeek" "Zeek (OBS install prefix)"
+    check_path_present "${SIGMA_CHAINSAW_DIR}" "Chainsaw install dir"
+    check_path_present "${SIGMA_HAYABUSA_DIR}" "Hayabusa install dir"
 
     header "Check summary"
     _log "Full log: $LOGFILE"
@@ -585,9 +616,24 @@ install_dotnet() {
         return 0
     fi
 
-    # Register Microsoft's package feed for this Ubuntu version (idempotent;
-    # dpkg -i replaces an existing config.deb if already present).
-    if ! dpkg -s packages-microsoft-prod >/dev/null 2>&1; then
+    # Register Microsoft's package feed for this Ubuntu version, but ONLY if
+    # no Microsoft apt source is already configured. Newer Ubuntu / SIFT
+    # images ship a pre-installed /etc/apt/sources.list.d/microsoft.sources
+    # (deb822 format) that registers packages.microsoft.com directly — if we
+    # then drop in packages-microsoft-prod (which writes microsoft-prod.list),
+    # apt logs "Target Packages is configured multiple times" on every
+    # update because both files resolve to the same repo URI.
+    local ms_repo_present=0
+    if dpkg -s packages-microsoft-prod >/dev/null 2>&1; then
+        ms_repo_present=1
+        ok "Microsoft package feed already registered (packages-microsoft-prod)"
+    elif grep -Rqs -E '(packages\.microsoft\.com|^URIs:.*packages\.microsoft\.com)' \
+            /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then
+        ms_repo_present=1
+        ok "Microsoft package feed already configured via existing apt source — skipping packages-microsoft-prod"
+    fi
+
+    if [[ $ms_repo_present -eq 0 ]]; then
         local tmpfile
         tmpfile=$(mktemp /tmp/ms-prod-XXXXX.deb)
         info "Downloading Microsoft package feed (Ubuntu ${UBUNTU_VER})"
@@ -603,8 +649,6 @@ install_dotnet() {
         fi
         rm -f "$tmpfile"
         APT_UPDATED=0
-    else
-        ok "Microsoft package feed already registered"
     fi
 
     install_required_packages "dotnet-runtime-9.0" dotnet-runtime-9.0
@@ -1001,6 +1045,154 @@ install_python_libs() {
     done
 }
 
+install_chainsaw() {
+    header "Chainsaw (Sigma + Chainsaw-format EVTX hunter)"
+    if command -v chainsaw >/dev/null 2>&1; then
+        ok "chainsaw: already on PATH ($(command -v chainsaw))"
+        return 0
+    fi
+    "${SUDO[@]}" mkdir -p "$SIGMA_CHAINSAW_DIR" >> "$LOGFILE" 2>&1 \
+        || { fail "create $SIGMA_CHAINSAW_DIR"; return 1; }
+
+    local tmp
+    tmp=$(mktemp /tmp/chainsaw_XXXXX.tar.gz)
+    if ! gh_download "$SIGMA_CHAINSAW_REPO" "$SIGMA_CHAINSAW_ASSET" "$tmp"; then
+        rm -f "$tmp"; return 1
+    fi
+    if ! file "$tmp" 2>/dev/null | grep -qiE 'gzip|tar archive'; then
+        fail "chainsaw: downloaded file is not a tarball (likely 404 HTML)"
+        rm -f "$tmp"; return 1
+    fi
+
+    # Tarball layout has historically alternated between a flat root and a
+    # versioned wrapping directory; --strip-components=1 fits the wrapped
+    # form, plain extraction fits the flat form. Try the friendlier form
+    # first, then fall back.
+    if ! "${SUDO[@]}" tar -xzf "$tmp" -C "$SIGMA_CHAINSAW_DIR" --strip-components=1 \
+            >> "$LOGFILE" 2>&1; then
+        if ! "${SUDO[@]}" tar -xzf "$tmp" -C "$SIGMA_CHAINSAW_DIR" >> "$LOGFILE" 2>&1; then
+            fail "chainsaw: extract failed"
+            rm -f "$tmp"; return 1
+        fi
+    fi
+    rm -f "$tmp"
+
+    local bin
+    bin=$(find "$SIGMA_CHAINSAW_DIR" -maxdepth 2 -type f -name 'chainsaw' -print -quit 2>/dev/null)
+    if [[ -z "$bin" ]]; then
+        fail "chainsaw: no 'chainsaw' binary in extracted tree (${SIGMA_CHAINSAW_DIR})"
+        return 1
+    fi
+    "${SUDO[@]}" chmod +x "$bin" >> "$LOGFILE" 2>&1 || true
+
+    if [[ -e "$SIGMA_CHAINSAW_LINK" && ! -L "$SIGMA_CHAINSAW_LINK" ]]; then
+        warn "${SIGMA_CHAINSAW_LINK} exists and is not a symlink; not overwriting"
+    elif "${SUDO[@]}" ln -sfn "$bin" "$SIGMA_CHAINSAW_LINK" >> "$LOGFILE" 2>&1; then
+        ok "chainsaw: ${SIGMA_CHAINSAW_LINK} -> ${bin}"
+    else
+        warn "chainsaw: could not create symlink ${SIGMA_CHAINSAW_LINK}"
+    fi
+}
+
+install_hayabusa() {
+    header "Hayabusa (one-shot Sigma EVTX timeline)"
+    if command -v hayabusa >/dev/null 2>&1; then
+        ok "hayabusa: already on PATH ($(command -v hayabusa))"
+        return 0
+    fi
+    "${SUDO[@]}" mkdir -p "$SIGMA_HAYABUSA_DIR" >> "$LOGFILE" 2>&1 \
+        || { fail "create $SIGMA_HAYABUSA_DIR"; return 1; }
+
+    if ! command -v unzip >/dev/null 2>&1; then
+        fail "hayabusa: unzip not on PATH (BASE_APT should have installed it)"
+        return 1
+    fi
+
+    local tmp
+    tmp=$(mktemp /tmp/hayabusa_XXXXX.zip)
+    if ! gh_download "$SIGMA_HAYABUSA_REPO" "$SIGMA_HAYABUSA_ASSET" "$tmp"; then
+        rm -f "$tmp"; return 1
+    fi
+    if ! file "$tmp" 2>/dev/null | grep -qi 'zip archive'; then
+        fail "hayabusa: downloaded file is not a zip archive (likely 404 HTML)"
+        rm -f "$tmp"; return 1
+    fi
+
+    if ! "${SUDO[@]}" unzip -q -o "$tmp" -d "$SIGMA_HAYABUSA_DIR" >> "$LOGFILE" 2>&1; then
+        fail "hayabusa: unzip failed"
+        rm -f "$tmp"; return 1
+    fi
+    rm -f "$tmp"
+
+    # Hayabusa 3.x ships its Linux binary as `hayabusa-<ver>-lin-x64-musl`
+    # alongside `rules/` and `config/`; older 2.x releases shipped a plain
+    # `hayabusa` binary. Match either; prefer ELF executables to avoid
+    # picking up rule YAMLs or readme fixtures.
+    local cand bin=""
+    while IFS= read -r cand; do
+        if file "$cand" 2>/dev/null | grep -qi 'ELF.*executable'; then
+            bin="$cand"; break
+        fi
+    done < <(find "$SIGMA_HAYABUSA_DIR" -maxdepth 3 -type f \
+                \( -iname 'hayabusa-*-lin-*' -o -iname 'hayabusa' \) 2>/dev/null)
+    if [[ -z "$bin" ]]; then
+        fail "hayabusa: no ELF binary matching hayabusa-*-lin-* (or 'hayabusa') under ${SIGMA_HAYABUSA_DIR}"
+        return 1
+    fi
+    "${SUDO[@]}" chmod +x "$bin" >> "$LOGFILE" 2>&1 || true
+
+    if [[ -e "$SIGMA_HAYABUSA_LINK" && ! -L "$SIGMA_HAYABUSA_LINK" ]]; then
+        warn "${SIGMA_HAYABUSA_LINK} exists and is not a symlink; not overwriting"
+    elif "${SUDO[@]}" ln -sfn "$bin" "$SIGMA_HAYABUSA_LINK" >> "$LOGFILE" 2>&1; then
+        ok "hayabusa: ${SIGMA_HAYABUSA_LINK} -> ${bin}"
+    else
+        warn "hayabusa: could not create symlink ${SIGMA_HAYABUSA_LINK}"
+    fi
+}
+
+install_evtx_dump() {
+    header "evtx_dump (Rust EVTX → JSONL dumper)"
+    if command -v evtx_dump >/dev/null 2>&1; then
+        ok "evtx_dump: already on PATH ($(command -v evtx_dump))"
+        return 0
+    fi
+
+    # Try apt first — `evtx-tools` is not in jammy/universe today, but a
+    # future Ubuntu release may pick it up and apt is cheaper + signed.
+    if apt-cache show "$SIGMA_EVTX_APT" >/dev/null 2>&1; then
+        if install_one_pkg "$SIGMA_EVTX_APT" optional \
+            && command -v evtx_dump >/dev/null 2>&1; then
+            return 0
+        fi
+        warn "${SIGMA_EVTX_APT}: apt did not place evtx_dump on PATH; falling back to GitHub release"
+    else
+        info "${SIGMA_EVTX_APT}: not in apt index; using omerbenamram/evtx GitHub release"
+    fi
+
+    local tmp
+    tmp=$(mktemp /tmp/evtx_dump_XXXXX)
+    if ! gh_download "$SIGMA_EVTX_REPO" "$SIGMA_EVTX_ASSET" "$tmp"; then
+        rm -f "$tmp"; return 1
+    fi
+    if ! file "$tmp" 2>/dev/null | grep -qi 'ELF.*executable'; then
+        fail "evtx_dump: downloaded file is not an ELF binary (likely 404 HTML)"
+        rm -f "$tmp"; return 1
+    fi
+
+    if "${SUDO[@]}" install -m 0755 "$tmp" "$SIGMA_EVTX_LINK" >> "$LOGFILE" 2>&1; then
+        ok "evtx_dump: installed at ${SIGMA_EVTX_LINK}"
+    else
+        fail "evtx_dump: install to ${SIGMA_EVTX_LINK} failed"
+    fi
+    rm -f "$tmp"
+}
+
+install_sigma_tools() {
+    install_chainsaw
+    install_hayabusa
+    install_evtx_dump
+}
+
 print_install_summary() {
     header "Install summary"
     _log "Full log: $LOGFILE"
@@ -1049,6 +1241,7 @@ main() {
     install_memory_baseliner
     install_python_libs
     install_network_tools
+    install_sigma_tools
     print_install_summary
 
     [[ $ERRORS -eq 0 ]]
