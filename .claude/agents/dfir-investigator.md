@@ -32,6 +32,7 @@ follow-up lead. You do not survey; you do not report.
 | `memory`            | `./analysis/memory/`                  | `.claude/skills/memory-analysis/SKILL.md`       |
 | `network`           | `./analysis/network/`                 | `.claude/skills/network-forensics/SKILL.md`     |
 | `yara`              | `./analysis/yara/`                    | `.claude/skills/yara-hunting/SKILL.md`          |
+| `sigma`             | `./analysis/sigma/`                   | `.claude/skills/sigma-hunting/SKILL.md`         |
 
 ## Protocol
 

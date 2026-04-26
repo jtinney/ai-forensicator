@@ -1,0 +1,132 @@
+# Project-library Sigma rules — Windows process_creation channel.
+#
+# Each rule conforms to the project metadata convention documented in
+# `.claude/skills/sigma-hunting/SKILL.md` § Rule conventions.
+#
+# Run via:
+#   chainsaw hunt <evtx_dir> \
+#       -s .claude/skills/sigma-hunting/rules/local/ \
+#       --mapping .claude/skills/sigma-hunting/mappings/sigma-event-logs-all.yml \
+#       --csv -o ./analysis/sigma/hits/
+
+title: Local Triage — PowerShell Encoded Command
+id: 7c2d3e3a-1f0f-4d8a-8b3c-001100000001
+description: >-
+    Detects PowerShell invocation with -EncodedCommand or its short-form
+    -e / -enc, which is the canonical pattern for obfuscated PowerShell
+    payloads dropped by exploit kits, droppers, and post-exploitation
+    frameworks.
+author: ai-forensicator project library
+date: 2026/04/26
+level: high
+status: stable
+references:
+    - https://attack.mitre.org/techniques/T1059/001/
+    - https://docs.microsoft.com/powershell/module/microsoft.powershell.core/about/about_powershell_exe
+tags:
+    - attack.execution
+    - attack.t1059.001
+    - attack.defense_evasion
+    - attack.t1027
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_image:
+        Image|endswith:
+            - '\powershell.exe'
+            - '\pwsh.exe'
+    selection_args:
+        CommandLine|contains:
+            - ' -EncodedCommand '
+            - ' -enc '
+            - ' -e '
+            - ' -ec '
+    condition: selection_image and selection_args
+fields:
+    - User
+    - ParentImage
+    - CommandLine
+falsepositives:
+    - Some installers and management tooling pass -EncodedCommand for legitimate reasons; check parent process and signer
+---
+title: Local Triage — Suspicious Service Install via sc.exe
+id: 7c2d3e3a-1f0f-4d8a-8b3c-001100000002
+description: >-
+    Detects a service install through `sc.exe create` whose binPath points
+    at a user-writable location (Temp / AppData / ProgramData) — a common
+    persistence technique used by post-exploitation kits.
+author: ai-forensicator project library
+date: 2026/04/26
+level: high
+status: stable
+references:
+    - https://attack.mitre.org/techniques/T1543/003/
+tags:
+    - attack.persistence
+    - attack.privilege_escalation
+    - attack.t1543.003
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_image:
+        Image|endswith: '\sc.exe'
+    selection_verb:
+        CommandLine|contains: ' create '
+    selection_path:
+        CommandLine|contains:
+            - '\Temp\'
+            - '\AppData\'
+            - '\ProgramData\'
+            - '\Users\Public\'
+    condition: all of selection_*
+fields:
+    - User
+    - ParentImage
+    - CommandLine
+falsepositives:
+    - Niche admin scripts that stage service binaries in Public — verify signer and origin
+---
+title: Local Triage — Mshta or Rundll32 Loading from Public Path
+id: 7c2d3e3a-1f0f-4d8a-8b3c-001100000003
+description: >-
+    Detects mshta.exe or rundll32.exe being launched with a payload path
+    under a user-writable directory — common LOLBin abuse pattern for
+    initial execution from a phishing payload or staged dropper.
+author: ai-forensicator project library
+date: 2026/04/26
+level: high
+status: stable
+references:
+    - https://lolbas-project.github.io/lolbas/Binaries/Mshta/
+    - https://lolbas-project.github.io/lolbas/Binaries/Rundll32/
+tags:
+    - attack.execution
+    - attack.defense_evasion
+    - attack.t1218.005
+    - attack.t1218.011
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_image:
+        Image|endswith:
+            - '\mshta.exe'
+            - '\rundll32.exe'
+    selection_path:
+        CommandLine|contains:
+            - '\Temp\'
+            - '\AppData\Roaming\'
+            - '\AppData\Local\Temp\'
+            - '\ProgramData\'
+            - '\Users\Public\'
+            - 'http://'
+            - 'https://'
+    condition: selection_image and selection_path
+fields:
+    - User
+    - ParentImage
+    - CommandLine
+falsepositives:
+    - Some legitimate installers stage helper DLLs in Public; verify signer

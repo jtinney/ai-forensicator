@@ -1,0 +1,66 @@
+# Project-library Sigma rules — Windows account-management & authentication.
+
+title: Local Triage — New Local Admin Account Created
+id: 7c2d3e3a-1f0f-4d8a-8b3c-001100000010
+description: >-
+    Detects a local user being added to the Administrators group via
+    Security event 4732 (member added to a security-enabled local group)
+    where the target group SID is S-1-5-32-544.
+author: ai-forensicator project library
+date: 2026/04/26
+level: high
+status: stable
+references:
+    - https://attack.mitre.org/techniques/T1136/001/
+    - https://attack.mitre.org/techniques/T1078/003/
+tags:
+    - attack.persistence
+    - attack.privilege_escalation
+    - attack.t1136.001
+    - attack.t1078.003
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4732
+        TargetSid: 'S-1-5-32-544'
+    condition: selection
+fields:
+    - SubjectUserName
+    - MemberName
+    - TargetUserName
+falsepositives:
+    - Provisioning workflows that legitimately add admins; verify SubjectUserName matches an authorized actor
+---
+title: Local Triage — Suspicious Logon Type 3 With Explicit Credentials From Workstation
+id: 7c2d3e3a-1f0f-4d8a-8b3c-001100000011
+description: >-
+    Detects a 4624 logon (LogonType 3 — network) where the source workstation
+    name is a workstation rather than a server / domain controller, the
+    LogonProcessName is `Advapi` (RunAs / impersonation) — a pattern
+    associated with credential reuse during lateral movement.
+author: ai-forensicator project library
+date: 2026/04/26
+level: medium
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1021/002/
+tags:
+    - attack.lateral_movement
+    - attack.t1021.002
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4624
+        LogonType: 3
+        LogonProcessName: 'Advapi  '
+    condition: selection
+fields:
+    - TargetUserName
+    - WorkstationName
+    - IpAddress
+falsepositives:
+    - Service accounts and scheduled tasks that legitimately RunAs network users

@@ -13,7 +13,7 @@ Nothing else.
 
 ## Canonical domain names
 
-All agents and orchestrator dispatches use these six `DOMAIN` values. They
+All agents and orchestrator dispatches use these seven `DOMAIN` values. They
 match the subdirs `case-init.sh` creates, so the findings.md stubs and
 survey/findings output paths line up without translation.
 
@@ -25,6 +25,7 @@ survey/findings output paths line up without translation.
 | `memory`            | `./analysis/memory/`             | `.claude/skills/memory-analysis/SKILL.md`       | Volatility 3, Memory Baseliner                      |
 | `network`           | `./analysis/network/`            | `.claude/skills/network-forensics/SKILL.md`     | tshark, Zeek, Suricata, pcap triage, beaconing      |
 | `yara`              | `./analysis/yara/`               | `.claude/skills/yara-hunting/SKILL.md`          | YARA IOC sweeps, Velociraptor                       |
+| `sigma`             | `./analysis/sigma/`              | `.claude/skills/sigma-hunting/SKILL.md`         | Chainsaw / Hayabusa Sigma rule sweeps over EVTX     |
 
 ## Agents
 
@@ -56,9 +57,9 @@ to the invocation that produced it.
 
 2. **Phase 2 — Survey** (parallel fan-out)
    - For each evidence item, pick applicable domains from its type:
-     - `disk` → `filesystem`, `windows-artifacts`, `timeline`, `yara`
+     - `disk` → `filesystem`, `windows-artifacts`, `timeline`, `yara`, `sigma`
      - `memory` → `memory`, `yara`
-     - `logs` / `triage-bundle` → `windows-artifacts`, `timeline`
+     - `logs` / `triage-bundle` → `windows-artifacts`, `timeline`, `sigma`
      - `pcap` → `network`, `yara`, `timeline`
      - `netlog` → `network`, `timeline`
    - Dispatch `dfir-surveyor` invocations in **batches of ≤ 3** (not all at
@@ -72,7 +73,7 @@ to the invocation that produced it.
    - Sort `leads.md` rows with `status=open` by `priority` (`high` first).
    - Dispatch one `dfir-investigator` per lead in parallel batches. Batch size
      depends on domain:
-     - `filesystem`, `windows-artifacts`, `yara`, `timeline` → **≤ 4** per
+     - `filesystem`, `windows-artifacts`, `yara`, `sigma`, `timeline` → **≤ 4** per
        batch (I/O-bound; CPU headroom remains)
      - `network`, `memory` → **≤ 2** per batch (CPU/RAM-bound: Zeek, Suricata,
        Volatility)

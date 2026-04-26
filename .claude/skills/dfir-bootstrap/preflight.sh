@@ -116,6 +116,9 @@ bin_check bulk_extractor || true
 bin_check photorec || true
 bin_check yara || true
 bin_check yarac || true
+bin_check chainsaw || true
+bin_check hayabusa || true
+bin_check evtx_dump || true
 bin_check dotnet || true
 bin_check wine || true
 bin_check tshark || true
@@ -341,6 +344,17 @@ if command -v yara >/dev/null 2>&1; then
     printf "| yara-hunting | GREEN | yara CLI present |\n"
 else
     printf "| yara-hunting | RED | yara missing — install \`yara\` |\n"
+fi
+
+# sigma-hunting — green when chainsaw is present (preferred);
+# yellow when only hayabusa is available (less of an orchestrator fit);
+# red when neither is on PATH.
+if command -v chainsaw >/dev/null 2>&1; then
+    printf "| sigma-hunting | GREEN | chainsaw on PATH |\n"
+elif command -v hayabusa >/dev/null 2>&1; then
+    printf "| sigma-hunting | YELLOW | hayabusa present but chainsaw missing — install \`chainsaw\` for orchestrator fit |\n"
+else
+    printf "| sigma-hunting | RED | neither chainsaw nor hayabusa on PATH — install one (see CLAUDE.md tool table) |\n"
 fi
 
 # windows-artifacts — green if EZ Tools present, yellow if only fallbacks

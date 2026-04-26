@@ -289,37 +289,64 @@ prove which rules fired and which did not.
 ```bash
 mkdir -p ./analysis/yara
 
-# Project rule library (reusable across cases)
-ls -la .claude/skills/yara-hunting/rules/ \
-  > ./analysis/yara/rules-enumerated.txt
-echo >> ./analysis/yara/rules-enumerated.txt
+{
+    echo "# YARA rule enumeration — $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    echo
 
-# Walk every .yar / .yara / .rules and emit each rule's name + meta
-find .claude/skills/yara-hunting/rules/ \
-    \( -name '*.yar' -o -name '*.yara' -o -name '*.rules' \) \
-    -printf '\n=== %p ===\n' \
-    -exec head -25 {} \; \
-  >> ./analysis/yara/rules-enumerated.txt
+    for ns in local vendor quarantine legacy; do
+        nsdir=".claude/skills/yara-hunting/rules/$ns"
+        echo "## namespace: $ns"
+        if [[ -d "$nsdir" ]]; then
+            ls -la "$nsdir"
+            find "$nsdir" \( -name '*.yar' -o -name '*.yara' -o -name '*.rules' \) \
+                -printf '\n=== %p ===\n' \
+                -exec head -25 {} \;
+        else
+            echo "(directory missing)"
+        fi
+        echo
+    done
 
-# Case-local rules (if the analyst wrote any for this case)
-echo >> ./analysis/yara/rules-enumerated.txt
-echo "--- case-local rules under ./analysis/yara/ ---" \
-  >> ./analysis/yara/rules-enumerated.txt
-ls -la ./analysis/yara/*.yar ./analysis/yara/*.yara 2>/dev/null \
-  >> ./analysis/yara/rules-enumerated.txt || true
+    echo "## case-local rules under ./analysis/yara/"
+    if compgen -G './analysis/yara/*.yar' >/dev/null \
+       || compgen -G './analysis/yara/*.yara' >/dev/null; then
+        ls -la ./analysis/yara/*.yar ./analysis/yara/*.yara 2>/dev/null
+    else
+        echo "(none)"
+    fi
+
+    echo
+    echo "## vendor manifest"
+    if [[ -f .claude/skills/yara-hunting/rules/vendor/vendor-manifest.json ]]; then
+        cat .claude/skills/yara-hunting/rules/vendor/vendor-manifest.json
+    else
+        echo "(no vendored sets pulled — see vendor-rules.sh)"
+    fi
+} > ./analysis/yara/rules-enumerated.txt
+
+# Validate the rule library before scanning. Errors here mean the rule set
+# itself is broken; refuse to scan with a broken library.
+bash .claude/skills/yara-hunting/validate-rules.sh \
+    .claude/skills/yara-hunting/rules/local/ \
+    ./analysis/yara/ \
+    > ./analysis/yara/validate-rules.txt 2>&1 \
+    || echo "WARN: validate-rules.sh reported errors — see analysis/yara/validate-rules.txt"
 
 bash .claude/skills/dfir-bootstrap/audit.sh \
     "yara-rule-enumeration" \
-    "enumerated project library + case-local rules — see analysis/yara/rules-enumerated.txt" \
-    "select rules in scope; compile via yarac before scan"
+    "enumerated local/vendor/quarantine/legacy + case-local rules — see analysis/yara/rules-enumerated.txt" \
+    "select namespaces in scope; compile via yarac before scan"
 ```
 
-**Distinguish project library from case-local rules.** Project library
-(`.claude/skills/yara-hunting/rules/`) is reusable; case-local
-(`./analysis/yara/rules-EV*.yar`) is scoped to the current evidence set.
-Both go through this gate, both appear in `rules-enumerated.txt`. If the
-project library is empty AND no case-local rules exist, the scan is a
-discipline failure — STOP and request rules from the case lead rather than
+**Namespace discipline.** Default scans should load
+`rules/local/` (always reusable). Vendored sets under `rules/vendor/<source>/`
+are loaded explicitly. `rules/quarantine/` and `rules/legacy/` are NEVER
+loaded by default. Case-local rules under `./analysis/yara/` are scoped to
+the current evidence set only.
+
+If `rules/local/` is empty AND no case-local rules exist AND no vendor sets
+have been pulled, the scan is a discipline failure — STOP and pull a vendor
+set (`vendor-rules.sh`) or request rules from the case lead rather than
 running yara with no signatures.
 
 **Compile once, scan many.** For corpora over ~1 GB:
@@ -362,32 +389,230 @@ yara -r /path/to/single_rule.yar /path/to/target/
 
 ---
 
-## Community Rulesets
+## Rule library layout
 
-```bash
-# Check for community rulesets on SIFT (may be pre-installed)
-ls /opt/yara-rules/ 2>/dev/null
-ls /opt/signature-base/ 2>/dev/null
+The skill rule library is namespace-partitioned so that every scan can be
+scoped intentionally and the audit trail records exactly which namespaces
+fired:
 
-# Common community sources to pull manually:
-# Neo23x0 / Florian Roth: https://github.com/Neo23x0/signature-base
-# Elastic Security: https://github.com/elastic/protections-artifacts
-# Mandiant / FireEye: Included in threat intel reports
-# CISA advisories: https://www.cisa.gov/resources-tools/resources/malware-analysis-reports
-
-# Use community rules with a filter to avoid noisy catches
-yara -r /opt/signature-base/yara/ /mnt/windows_mount/ 2>/dev/null | grep -v "^$"
 ```
+.claude/skills/yara-hunting/rules/
+├── local/        — project-vetted, in-house rules (tracked in git)
+├── vendor/       — third-party upstream sets, populated by vendor-rules.sh
+│                   (gitignored by default — license terms vary, operator
+│                    must `git add -f` to commit a vendored set)
+├── quarantine/   — rules disabled for FP / scope problems (tracked in git
+│                   as historical record, never loaded into scans)
+└── legacy/       — historical case-specific rules retained for chain of
+                    custody. NOT included in default sweeps.
+```
+
+**Per-case output:**
+```
+./analysis/yara/                         ← per-case rules + scan output
+./analysis/yara/rules-EV01.yar           ← case-local rules (one per evidence)
+./analysis/yara/rules-EV01.compiled      ← yarac-compiled binary
+./analysis/yara/yara-hits-EV01.txt       ← scan hits
+./analysis/yara/rules-enumerated.txt     ← required baseline (see § gate)
+./reports/                               ← finalized IOC sweep reports
+```
+
+A scan that loads `rules/local/` + `rules/vendor/<source>/` is **reusable**.
+A scan that loads `rules/legacy/` is **not** — those files contain
+case-tied indicators (filenames, hostnames, hashes) that would generate
+false positives outside the originating case.
 
 ---
 
-## Rule Storage
+## Rule conventions (mandatory for `rules/local/`)
+
+Every rule in `rules/local/` and every case-local rule under
+`./analysis/yara/` MUST conform to this convention. The linter
+(`validate-rules.sh`, see below) enforces the required keys and runs
+`yarac` to confirm syntax.
+
+### Required `meta` keys
+
+| Key | Value | Notes |
+|---|---|---|
+| `author`      | string                              | Person or project ("ai-forensicator project library") |
+| `date`        | `YYYY-MM-DD`                        | Authoring date; bump when rule body changes |
+| `description` | one-line string                     | What the rule fires on, not why it matters |
+| `severity`    | `informational` \| `low` \| `medium` \| `high` \| `critical` | Operator's confidence the hit is malicious |
+| `scope`       | `file` \| `memory` \| `both` \| `pcap_payload` \| `unallocated` | What the rule expects to scan |
+
+### Recommended `meta` keys (required under `--strict`)
+
+| Key | Value |
+|---|---|
+| `reference` | URL, CVE ID, paper, or in-house case ID. Vendored rules MUST set this to the upstream source URL + commit. |
+| `mitre`     | Comma-separated ATT&CK technique IDs (e.g. `T1059.001,T1027`) |
+| `family`    | Lowercase malware-family identifier (`emotet`, `cobaltstrike`) |
+| `hash`      | SHA256 of a reference sample, when the rule was authored from one |
+| `tlp`       | `clear` \| `green` \| `amber` \| `amber+strict` \| `red` |
+| `license`   | SPDX ID, `DRL-1.1`, `EL-2.0`, or `Local` |
+| `fp_tested` | `YYYY-MM-DD` of last FP test against goodware |
+| `fp_target` | Path(s) used for the FP test (`/usr/bin`, `/Windows/System32`) |
+
+### Tag vocabulary
+
+YARA tags are how scans get scoped. Use them — `yara --tag=memory rules.yar`
+runs only memory-scoped rules and skips disk-only ones. The accepted vocab:
+
+| Category | Tags |
+|---|---|
+| Scope     | `file`, `memory`, `pcap_payload`, `unallocated` |
+| Format    | `pe`, `elf`, `macho`, `script_ps1`, `script_vbs`, `script_js`, `script_cmd`, `office`, `archive` |
+| Stage     | `loader`, `implant`, `persistence`, `credaccess`, `exfil`, `c2`, `recon`, `ransomware` |
+| Severity  | `sev_critical`, `sev_high`, `sev_medium`, `sev_low`, `sev_info` |
+| Family    | `family_<lowercase_name>` (e.g. `family_emotet`) |
+
+A rule may have multiple tags from each category. Every rule SHOULD have at
+least one `Scope` tag and one `Severity` tag.
+
+### Naming convention
+
+`<Provenance>_<Category>_<Variant>` — letters, digits, underscores only.
+
+| Provenance prefix | Used for |
+|---|---|
+| `Local_`     | Rules under `rules/local/` |
+| `Case<N>_`   | Case-local rules under `./analysis/yara/` (replace N with the case number) |
+| `Sigbase_`   | Mirror of Neo23x0 signature-base (when promoted into local/) |
+| `Yaraforge_` | Mirror of YARAHQ yara-forge |
+| `Elastic_`   | Mirror of elastic/protections-artifacts |
+
+Example: `Local_Emotet_Loader_v3`, `Case42_Lateral_PsExec_Beacon`.
+
+### Performance contract
+
+YARA short-circuits left-to-right. Order conditions cheap → expensive:
 
 ```
-.claude/skills/yara-hunting/rules/    ← store reusable rules here
-./exports/yara_hits/                    ← scan output for current case
-./reports/                              ← finalized IOC sweep reports
+condition:
+    uint16(0) == 0x5A4D and    // 1. Fast: 2-byte read at offset 0
+    filesize < 10MB and         // 2. Fast: metadata
+    pe.is_pe and                // 3. Medium: PE parser
+    $str1 and                   // 4. Medium: string match
+    math.entropy(...) > 7.0    // 5. Expensive: full entropy scan — LAST
 ```
+
+- Strings ≥ 4 bytes (yara warns below)
+- Regex must be bounded (anchored quantifier, `at` clause, or `filesize<X`)
+- Don't `any of them` against rules whose only strings are short regexes
+
+### False-positive contract
+
+Rules in `rules/local/` SHOULD record an FP test. The validator's
+`--fp-test` flag re-runs the test against `/usr/bin` (and
+`/Windows/System32` if mounted) and warns when a rule fires on more than
+`FP_THRESHOLD` (default 5) goodware files.
+
+If a rule trips heavy goodware, move it to `rules/quarantine/` rather than
+deleting it — keeping it on disk preserves the historical record and lets a
+later analyst re-tighten it.
+
+---
+
+## Rule validation (`validate-rules.sh`)
+
+Run before committing any change to `rules/local/` and as part of the
+case-bootstrap rule-enumeration gate (see below):
+
+```bash
+# Validate every rule in rules/local/
+bash .claude/skills/yara-hunting/validate-rules.sh
+
+# Validate case-local rules
+bash .claude/skills/yara-hunting/validate-rules.sh ./analysis/yara/
+
+# Strict mode — also requires `reference` and `mitre`
+bash .claude/skills/yara-hunting/validate-rules.sh --strict
+
+# Strict + FP-test against /usr/bin
+bash .claude/skills/yara-hunting/validate-rules.sh --strict --fp-test
+```
+
+The script:
+
+1. Runs `yarac` on each file (full syntax + semantic check).
+2. Parses every `rule X { meta: ... }` block and verifies the required keys
+   are present, `date` matches `YYYY-MM-DD`, `severity` and `scope` use
+   allowed values.
+3. With `--fp-test`, scans every rule against goodware directories and
+   warns on rules that hit more than `FP_THRESHOLD` (default 5) files.
+
+Exit 0 on clean, 1 on errors, 2 on bad invocation.
+
+---
+
+## Vendoring upstream rule sets (`vendor-rules.sh`)
+
+The project does not ship third-party rule packs in git — license terms
+vary and operators may need to make per-source decisions. Pull them on a
+connected workstation, then transfer `rules/vendor/` to isolated SIFT
+instances out-of-band.
+
+```bash
+# Default: yara-forge + signature-base, pinned refs
+bash .claude/skills/yara-hunting/vendor-rules.sh
+
+# Add Elastic protections-artifacts (Elastic License v2 — review terms)
+bash .claude/skills/yara-hunting/vendor-rules.sh --with elastic
+
+# Add ReversingLabs YARA rules (MIT)
+bash .claude/skills/yara-hunting/vendor-rules.sh --with reversinglabs
+
+# Verify on-disk archives match the manifest (run on the SIFT side)
+bash .claude/skills/yara-hunting/vendor-rules.sh --verify-only
+
+# List configured sources, refs, licenses
+bash .claude/skills/yara-hunting/vendor-rules.sh --list
+
+# Wipe the vendor dir
+bash .claude/skills/yara-hunting/vendor-rules.sh --clean
+```
+
+The fetch writes `rules/vendor/vendor-manifest.json` — a deterministic
+record of every archive pulled with source URL, ref, SHA256, license, and
+pull timestamp. Re-running with `--verify-only` re-hashes and detects drift.
+
+### Reputable upstream sources (in rough signal-to-noise order for DFIR)
+
+| Source | License | Notes |
+|---|---|---|
+| **YARAHQ / yara-forge** | MIT (per-rule licenses preserved) | Aggregated, deduped, FP-tested superset of ~15 sources — best "single pull" |
+| **Neo23x0 / signature-base** (Florian Roth) | DRL 1.1 | Broad APT/malware coverage, low FP, attribution required |
+| **Elastic protections-artifacts** | Elastic License v2 | MITRE-tagged YARA + EQL — review redistribution restrictions |
+| **ReversingLabs YARA rules** | MIT | Strong on packers, loaders, droppers |
+| **Volexity / Mandiant / SentinelLabs** | Per-report | Narrow but high-confidence; vendor manually from threat reports |
+| **CISA malware analysis advisories** | Public domain | Per-report rules linked from `cisa.gov/resources-tools/resources/malware-analysis-reports` |
+
+Always promote a vendored rule into `rules/local/` (with the project meta
+convention applied) when it becomes core to the project's hunting baseline.
+Keep the upstream `rules/vendor/` copy unchanged — that preserves the
+chain back to the source repo.
+
+### Tag-based scoping with vendored rules
+
+Vendored sets are typically large. Tag-based scoping is essential to
+keep scan time manageable:
+
+```bash
+# Run only memory-scoped rules across local + vendor
+yara --tag=memory \
+    .claude/skills/yara-hunting/rules/local/ \
+    .claude/skills/yara-hunting/rules/vendor/yara-forge/ \
+    /path/to/memory.img
+
+# Run only ransomware-tagged rules
+yara --tag=ransomware ...
+```
+
+If an upstream set lacks the project's tag vocabulary (most do), the
+operator can promote a curated subset into `rules/local/` with the
+project convention applied — that's where the metadata convention pays
+off across upstream.
 
 ---
 
@@ -399,6 +624,7 @@ first in the next investigator wave.
 
 <!-- baseline-artifacts:start -->
 required: analysis/yara/rules-enumerated.txt
+required: analysis/yara/validate-rules.txt
 optional: analysis/yara/rules-EV01.yar
 optional: analysis/yara/rules-EV01.compiled
 optional: analysis/yara/yara-hits-EV01.txt

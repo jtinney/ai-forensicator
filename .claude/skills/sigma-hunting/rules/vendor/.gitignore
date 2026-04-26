@@ -1,0 +1,13 @@
+# Vendored upstream Sigma + Chainsaw rule sets are not committed by default
+# — license terms vary by upstream and operators may need to make per-source
+# decisions.
+#
+# `vendor-rules.sh` populates this directory and writes a manifest at
+# `rules/vendor/vendor-manifest.json` recording source, ref, license, and
+# SHA256 of every pulled archive.
+#
+# To commit a vendored set anyway, override with `git add -f rules/vendor/<source>/`
+# and confirm the upstream license permits redistribution.
+
+*
+!.gitignore

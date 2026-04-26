@@ -1,0 +1,7 @@
+legacy — historical case-specific rule files. Do NOT include in default scans.
+These files were written for specific past cases (CASE6 EV02 / EV06 / triage)
+and contain case-tied indicators (filenames, hostnames, hashes) that have no
+value to other cases. Kept for chain-of-custody traceability only.
+
+To run scans against the reusable project library, point yara at
+rules/local/ (or rules/local/ + rules/vendor/<source>/ — see SKILL.md).

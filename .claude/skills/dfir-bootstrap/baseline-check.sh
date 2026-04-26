@@ -33,7 +33,7 @@ set -u
 DOMAIN="${1:-}"
 if [[ -z "$DOMAIN" ]]; then
     echo "usage: baseline-check.sh <DOMAIN>" >&2
-    echo "  DOMAIN: filesystem | timeline | windows-artifacts | memory | network | yara" >&2
+    echo "  DOMAIN: filesystem | timeline | windows-artifacts | memory | network | yara | sigma" >&2
     exit 2
 fi
 
@@ -45,6 +45,7 @@ case "$DOMAIN" in
     memory)            SKILL_FILE=".claude/skills/memory-analysis/SKILL.md"     ;;
     network)           SKILL_FILE=".claude/skills/network-forensics/SKILL.md"   ;;
     yara)              SKILL_FILE=".claude/skills/yara-hunting/SKILL.md"        ;;
+    sigma)             SKILL_FILE=".claude/skills/sigma-hunting/SKILL.md"       ;;
     *)
         printf '{"domain":"%s","error":"unknown domain"}\n' "$DOMAIN"
         exit 2
@@ -69,6 +70,7 @@ case "$DOMAIN" in
     memory)            SKILL_LABEL="memory-analysis"    ;;
     network)           SKILL_LABEL="network-forensics"  ;;
     yara)              SKILL_LABEL="yara-hunting"       ;;
+    sigma)             SKILL_LABEL="sigma-hunting"      ;;
 esac
 
 if [[ -f "$PREFLIGHT" ]]; then

@@ -72,6 +72,9 @@ Before touching evidence on a new case or a new SIFT instance:
 | **Zeek** | `zeek`, `zeek-cut` | install `zeek` (jammy/universe) or upstream APT | Protocol-aware analyser → structured TSV logs (`conn.log`, `dns.log`, …) |
 | **Suricata** | `suricata`, `suricata-update` | install `suricata` + `suricata-update` | Signature-based IDS; `-r` for offline pcap; ET Open via `suricata-update` |
 | **tcpdump / tcpflow / ngrep / nfdump / jq** | small CLI helpers | install via apt | Capture-side utilities + flow records + JSON-line triage |
+| **Chainsaw** | `chainsaw` (Rust binary, statically linked) | install from `https://github.com/WithSecureLabs/chainsaw/releases` | Sigma + Chainsaw-format hunting against `.evtx` corpus; `chainsaw lint` validates rule schema |
+| **Hayabusa** | `hayabusa` (Rust binary, statically linked) | install from `https://github.com/Yamato-Security/hayabusa/releases` | One-shot Sigma-driven EVTX triage timeline |
+| **evtx_dump** | `evtx_dump` | install via `cargo install evtx` or apt `evtx-tools` | Raw EVTX → JSONL fallback / pre-filter |
 
 **Not available on any SIFT Linux instance:** MemProcFS, VSCMount (Windows-only).
 
@@ -123,5 +126,6 @@ workbook-update       # update FOR508 workbook
 | Windows artifacts (EZ Tools / Event Logs / Registry) | `@.claude/skills/windows-artifacts/SKILL.md` |
 | Network forensics (tshark / Zeek / Suricata / pcap) | `@.claude/skills/network-forensics/SKILL.md` |
 | Threat hunting & IOC sweeps (YARA / Velociraptor) | `@.claude/skills/yara-hunting/SKILL.md` |
+| Sigma / EVTX hunting (Chainsaw + Hayabusa) | `@.claude/skills/sigma-hunting/SKILL.md` |
 
 EZ Tools prefer native .NET over WINE. GUI tools (TimelineExplorer, RegistryExplorer) require WINE or the Windows analysis VM.

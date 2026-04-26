@@ -231,7 +231,8 @@ Every finding has a follow-on. Don't stop at the first hit.
 |---|---|---|
 | A suspicious binary path | (a) hash for VT/YARA, (b) `Prefetch`+`Amcache` for execution, (c) `$J` for create time, (d) parent in `pstree` | `windows-artifacts` + `memory-analysis` + `sleuthkit` |
 | A suspicious logon (4624/4648) | (a) source IP geolocation, (b) other 4624s from same IP, (c) RDP 1149 / SMB 5145, (d) what executed within 5 min after | `windows-artifacts` + `plaso-timeline --slice` |
-| A persistence entry | (a) creator account, (b) creation time vs first execution, (c) service binary hash + YARA, (d) related new files in same window | `windows-artifacts` + `yara-hunting` |
+| A persistence entry | (a) creator account, (b) creation time vs first execution, (c) service binary hash + YARA, (d) related new files in same window, (e) Sigma `service_install` rules across the host's EVTX | `windows-artifacts` + `yara-hunting` + `sigma-hunting` |
+| Suspicious EVTX event ID / pattern (4624 anomaly, 4688 LOLBin, 7045 service install, 5145 share access) | (a) Sigma rule pack against the EVTX corpus, (b) cross-host sweep with same rule, (c) parent-process pivot, (d) source-WorkstationName pivot | `sigma-hunting` + `windows-artifacts` |
 | Defender disabled / log cleared | (a) who/when (4720, 1102, 4719), (b) what executed *immediately after*, (c) is the policy still tampered now? | `windows-artifacts` |
 | Suspicious memory region (malfind) | (a) dump it, (b) strings + YARA, (c) parent process + cmdline, (d) on-disk backing file (or absence) | `memory-analysis` + `yara-hunting` |
 | A deleted user file | (a) `$I` for original path/SID, (b) `$J` for the delete event, (c) carve `$R` if present, (d) what process did it (Sysmon 23, prefetch around delete time) | `sleuthkit` + `windows-artifacts` |
