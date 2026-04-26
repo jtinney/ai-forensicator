@@ -48,20 +48,21 @@ opposite stance:
 ## The phased approach
 
 When a case has more than one evidence item or spans multiple domains,
-work runs through five phases, each handled by a dedicated sub-agent.
+work runs through six phases, each handled by a dedicated sub-agent.
 Raw tool output lands on disk; only pointers and short summaries cross
 phase boundaries. The canonical doc is `.claude/skills/ORCHESTRATE.md`;
 this is the shape of it.
 
 | Phase | Agent | Model | Fan-out | Job |
 |-------|-------|-------|---------|-----|
-| 1 Triage | `dfir-triage` | haiku | once | Run preflight, scaffold the case tree, inventory and classify every evidence item, emit `manifest.md`. |
+| 1 Triage | `dfir-triage` | haiku | once | Run preflight, scaffold the case tree, inventory and classify every evidence item, emit `manifest.md`. Triggers the intake interview if chain-of-custody fields are blank. |
 | 2 Survey | `dfir-surveyor` | sonnet | one per (evidence × domain) | Cheap-signal sweeps in one domain against one evidence item (e.g. Prefetch + Amcache + Run keys for `windows-artifacts`). Emits a short lead list. |
 | 3 Investigate | `dfir-investigator` | sonnet | one per lead, parallel waves ≤4 | Deep-dive on exactly one lead. Loads one domain skill, answers one hypothesis, writes one findings entry, updates lead status. |
 | 4 Correlate | `dfir-correlator` | **opus** | once per wave | Cross-reference confirmed findings across domains and evidence items — align on timestamps, users, hosts, hashes, IPs. Opus because this is the case's core reasoning step. |
 | 5 Report | `dfir-reporter` | haiku | once | Produce `reports/final.md` (technical) and `reports/stakeholder-summary.md` (non-technical, per the `exec-briefing` skill). Reads artifacts only; runs no forensic tools. |
+| 6 QA | `dfir-qa` | sonnet | once | Quality-assurance pass with authority to correct mistakes in place. Cross-checks numerical claims against authoritative artifacts, enforces lead-status invariants, applies fixes via Edit/Write before sign-off. |
 
-### Why five phases, and why these five
+### Why six phases, and why these six
 
 - **Triage is separate from survey** because case bootstrap is a
   once-per-case, side-effectful step (writing `manifest.md`, initializing
@@ -78,9 +79,15 @@ this is the shape of it.
   injection at 13:47 on the host from the EVTX 4624 at 11:58") is the
   one step where cheap models reliably underperform. The correlator is
   the only agent allowed to read every `findings.md` at once.
-- **Report is last and separate** so the final write-up is grounded in
+- **Report is separate from analysis** so the write-up is grounded in
   already-confirmed findings and cannot accidentally re-investigate or
   invent claims. The reporter is a translation layer, not an analyst.
+- **QA is the last phase, after the report**, because the things most
+  likely to be wrong (a count that doesn't match the artifact, a lead
+  still marked `in-progress`, a stakeholder summary contradicting
+  `final.md`) only become visible once everything else is on disk.
+  Putting QA earlier would force re-runs; putting it never would let
+  drift survive into sign-off.
 
 ### Leads are the backbone
 
@@ -124,10 +131,27 @@ that multiple domains will get touched.
   absent), the shared chain-of-custody rules (`dfir-discipline`), the
   reporting skill (`exec-briefing`), and the two entrypoints
   (`ORCHESTRATE.md`, `TRIAGE.md`).
-- `.claude/agents/` — the five phase agents (`dfir-triage`,
+- `.claude/agents/` — the six phase agents (`dfir-triage`,
   `dfir-surveyor`, `dfir-investigator`, `dfir-correlator`,
-  `dfir-reporter`).
+  `dfir-reporter`, `dfir-qa`).
 - `analysis/`, `exports/`, `reports/` — per-case output roots.
+
+## Case-close gates
+
+A case is not CLOSED until all five gates pass:
+
+| Gate | Script / Phase | Enforced where |
+|------|----------------|----------------|
+| Intake fields populated (`reports/00_intake.md`) | `intake-check.sh` | Phases 4 / 5 / 6 |
+| All leads in terminal status | `leads-check.sh` | Phases 4 / 5 / 6 |
+| Per-domain baseline artifacts present | `baseline-check.sh` | Phase 4 |
+| QA pass produced | Phase 6 (`dfir-qa`) | Sign-off |
+| Final + stakeholder report present | Phase 5 (`dfir-reporter`) | Sign-off |
+
+The intake interview is the **one** place agent autonomy yields to
+operator input — chain-of-custody fields are not optional. `case-init.sh`
+launches `intake-interview.sh` if any field is blank; in non-TTY mode it
+drops `./analysis/.intake-pending` for the orchestrator to surface.
 
 ## Case start
 
