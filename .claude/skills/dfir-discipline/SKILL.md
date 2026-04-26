@@ -1,0 +1,51 @@
+# Skill: DFIR Discipline (shared rules across all phase agents)
+
+This skill is one file: [`DISCIPLINE.md`](./DISCIPLINE.md). It contains four
+mandatory rules that every phase agent (`dfir-triage`, `dfir-surveyor`,
+`dfir-investigator`, `dfir-correlator`, `dfir-reporter`) must follow at every
+step.
+
+## Why this skill exists
+
+The case7 post-mortem surfaced four recurring discipline failures across
+multiple phase agents:
+
+- **A** — investigator agents wrote synthetic UTC timestamps directly into
+  `forensic_audit.log` instead of going through `audit.sh` (chain-of-custody
+  defect). Enforced by the PreToolUse / PostToolUse hooks in
+  `.claude/settings.json` and `dfir-bootstrap/audit-{verify,pretool-deny,retrofit}.sh`.
+- **F** — investigators went deep on shellcode reverse-engineering before
+  running cheap wire-level disconfirmation queries that would have refuted
+  the lead in 30 seconds.
+- **G** — correlators marked anomalies as "out of scope" even when the
+  anomaly, if resolved differently, would have flipped a headline assertion.
+- **H** — investigators answered the lead's exact hypothesis but did not
+  exhaust the same-domain natural follow-up surface, deferring obvious
+  Phase-3 work to Phase 4 correlator gaps.
+- **B** — wave-2 correlator amended findings via audit-log entries but did
+  not back-port the corrections into the headline tables in
+  `correlation.md`, leaving the report inconsistent with the audit trail.
+
+These rules apply across every agent. Codifying them in one file (instead of
+duplicating in five agent prompts) keeps the prompts short and the rules
+versionable.
+
+## How agents use it
+
+Every phase-agent prompt opens with:
+
+> **MANDATORY:** read `.claude/skills/dfir-discipline/DISCIPLINE.md` before
+> acting; the four rules apply at every step. Your first audit-log entry of
+> this invocation MUST include the marker `discipline_v1_loaded` in the
+> result field.
+
+The marker is a visible self-attestation: a future audit of the case can
+grep for `discipline_v1_loaded` and confirm each agent invocation
+acknowledged the rules. This is supplementary to (not a replacement for) the
+hook-based enforcement.
+
+## Versioning
+
+When DISCIPLINE.md changes substantively, bump the marker (`discipline_v2_loaded`)
+in this file and in each agent prompt simultaneously. The marker change makes
+old vs. new agent runs distinguishable in the audit log.

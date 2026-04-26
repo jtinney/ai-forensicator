@@ -278,6 +278,64 @@ condition:
 
 ---
 
+## Rule enumeration gate (run BEFORE any scan)
+
+Before any `yara` invocation in this case, you MUST enumerate the rule
+library and record what is actually available. The case7 anti-pattern was
+that the surveyor reused an in-memory mental model of the rule set and
+never recorded what it scanned with — so the case's audit trail cannot
+prove which rules fired and which did not.
+
+```bash
+mkdir -p ./analysis/yara
+
+# Project rule library (reusable across cases)
+ls -la .claude/skills/yara-hunting/rules/ \
+  > ./analysis/yara/rules-enumerated.txt
+echo >> ./analysis/yara/rules-enumerated.txt
+
+# Walk every .yar / .yara / .rules and emit each rule's name + meta
+find .claude/skills/yara-hunting/rules/ \
+    \( -name '*.yar' -o -name '*.yara' -o -name '*.rules' \) \
+    -printf '\n=== %p ===\n' \
+    -exec head -25 {} \; \
+  >> ./analysis/yara/rules-enumerated.txt
+
+# Case-local rules (if the analyst wrote any for this case)
+echo >> ./analysis/yara/rules-enumerated.txt
+echo "--- case-local rules under ./analysis/yara/ ---" \
+  >> ./analysis/yara/rules-enumerated.txt
+ls -la ./analysis/yara/*.yar ./analysis/yara/*.yara 2>/dev/null \
+  >> ./analysis/yara/rules-enumerated.txt || true
+
+bash .claude/skills/dfir-bootstrap/audit.sh \
+    "yara-rule-enumeration" \
+    "enumerated project library + case-local rules — see analysis/yara/rules-enumerated.txt" \
+    "select rules in scope; compile via yarac before scan"
+```
+
+**Distinguish project library from case-local rules.** Project library
+(`.claude/skills/yara-hunting/rules/`) is reusable; case-local
+(`./analysis/yara/rules-EV*.yar`) is scoped to the current evidence set.
+Both go through this gate, both appear in `rules-enumerated.txt`. If the
+project library is empty AND no case-local rules exist, the scan is a
+discipline failure — STOP and request rules from the case lead rather than
+running yara with no signatures.
+
+**Compile once, scan many.** For corpora over ~1 GB:
+
+```bash
+yarac ./analysis/yara/rules-EV01.yar ./analysis/yara/rules-EV01.compiled
+yara -C ./analysis/yara/rules-EV01.compiled <target>     # uses compiled
+```
+
+`rules-enumerated.txt` is in the baseline-artifact contract for this skill
+(see § "Required baseline artifacts" below). Skipping the gate causes
+`baseline-check.sh yara` to flag a missing artifact and the orchestrator
+to emit `L-BASELINE-yara-NN`.
+
+---
+
 ## IOC Sweep Workflow
 
 1. **Build IOC list** from confirmed findings (file hashes, strings, IPs, domains, paths, mutex names)
@@ -330,6 +388,24 @@ yara -r /opt/signature-base/yara/ /mnt/windows_mount/ 2>/dev/null | grep -v "^$"
 ./exports/yara_hits/                    ← scan output for current case
 ./reports/                              ← finalized IOC sweep reports
 ```
+
+---
+
+## Required baseline artifacts
+
+This block is parsed by `.claude/skills/dfir-bootstrap/baseline-check.sh yara`.
+Missing artifacts produce a high-priority `L-BASELINE-yara-NN` lead that runs
+first in the next investigator wave.
+
+<!-- baseline-artifacts:start -->
+required: analysis/yara/rules-enumerated.txt
+optional: analysis/yara/rules-EV01.yar
+optional: analysis/yara/rules-EV01.compiled
+optional: analysis/yara/yara-hits-EV01.txt
+optional: analysis/yara/survey-EV01.md
+<!-- baseline-artifacts:end -->
+
+---
 
 ## Pivots — what to do with what you found here
 

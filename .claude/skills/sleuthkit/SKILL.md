@@ -491,6 +491,21 @@ sudo umount /mnt/ewf
 
 ---
 
+## Required baseline artifacts
+
+This block is parsed by `.claude/skills/dfir-bootstrap/baseline-check.sh filesystem`.
+Missing required artifacts produce a high-priority `L-BASELINE-filesystem-NN`
+lead that runs first in the next investigator wave.
+
+<!-- baseline-artifacts:start -->
+optional: analysis/filesystem/mmls.txt
+optional: analysis/filesystem/fls-root.txt
+optional: analysis/filesystem/fsstat.txt
+optional: analysis/filesystem/survey-EV01.md
+<!-- baseline-artifacts:end -->
+
+---
+
 ## Pivots — what to do with what you found here
 
 | Found here | Pivot to | Skill |

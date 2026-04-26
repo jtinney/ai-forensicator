@@ -913,6 +913,23 @@ dotnet /opt/zimmermantools/bstrings.dll -f ./exports/files/<binary> \
 
 ---
 
+## Required baseline artifacts
+
+This block is parsed by `.claude/skills/dfir-bootstrap/baseline-check.sh windows-artifacts`.
+Missing required artifacts produce a high-priority
+`L-BASELINE-windows-artifacts-NN` lead that runs first in the next
+investigator wave.
+
+<!-- baseline-artifacts:start -->
+optional: analysis/windows-artifacts/registry-summary.md
+optional: analysis/windows-artifacts/evtx-summary.md
+optional: analysis/windows-artifacts/prefetch-summary.csv
+optional: analysis/windows-artifacts/amcache-summary.csv
+optional: analysis/windows-artifacts/survey-EV01.md
+<!-- baseline-artifacts:end -->
+
+---
+
 ## Pivots — what to do with what you found here
 
 | Found here | Pivot to | Skill |

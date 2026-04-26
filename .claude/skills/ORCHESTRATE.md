@@ -85,9 +85,23 @@ to the invocation that produced it.
    - Budget cap: 3 waves, or a case-specific cap from the prompt.
 
 4. **Phase 4 — Correlate** (blocking)
-   - Invoke `dfir-correlator` once after the last investigation wave.
-   - If it appends new `L-CORR-*` leads, run one more investigation wave,
-     then re-correlate. Hard stop after the second correlation pass.
+   - **Baseline-artifact gate (BEFORE invoking the correlator):** for each
+     domain that has `./analysis/<DOMAIN>/findings.md` non-empty (i.e. an
+     investigator wrote to it), run
+     `bash .claude/skills/dfir-bootstrap/baseline-check.sh <DOMAIN>`. For each
+     domain whose JSON output reports `missing != []`, append a lead row
+     `L-CORR-BASELINE-<DOMAIN>-<NN>` to `./analysis/leads.md` at priority
+     `high`, status `open`, hypothesis
+     `Re-generate <missing-list> for <DOMAIN>`. **Correlation does NOT
+     proceed around a baseline gap** — run a focused Phase 3 wave to fill
+     the gap, then re-attempt the gate. Hard stop after the third
+     baseline-fill wave; if still missing, mark `blocked` and proceed to
+     correlation with an explicit "baseline-incomplete" caveat in the
+     correlator's output.
+   - Invoke `dfir-correlator` once after the gate passes.
+   - If it appends new `L-CORR-*` leads (non-baseline), run one more
+     investigation wave, then re-correlate. Hard stop after the second
+     correlation pass.
 
 5. **Phase 5 — Report** (blocking)
    - Invoke `dfir-reporter` once. It produces two reports:
@@ -119,14 +133,25 @@ earlier phases. On resume:
 1. Read `./analysis/manifest.md` — if absent, start from Phase 1.
 2. Read `./analysis/leads.md` — if absent or only has the header, start from
    Phase 2 (surveyor fan-out for every evidence item).
+2.5. **Baseline-artifact gate (per domain).** For each `./analysis/<DOMAIN>/`
+   subdir that contains a `survey-EV*.md`, run
+   `bash .claude/skills/dfir-bootstrap/baseline-check.sh <DOMAIN>`. For each
+   missing artifact reported, append a lead row
+   `L-BASELINE-<DOMAIN>-<NN>` at priority `high`, status `open`, hypothesis
+   `Re-generate <missing-list> for <DOMAIN>`. **The next Phase 3 wave runs
+   `L-BASELINE-*` leads BEFORE any other open lead** — missing baselines
+   mean later pivots are operating on an incomplete picture and may need
+   re-doing.
 3. Count leads by status:
    - Any `status=in-progress`? That invocation died mid-run. Reset those rows
      to `open` (the investigator is idempotent on re-run because it re-reads
      the pointer and overwrites its own findings entry timestamp).
    - Any `status=open` with priority `high`? Run another Phase 3 wave.
+     Sort `L-BASELINE-*` first, then everything else.
    - All leads `confirmed`/`refuted`/`escalated`/`blocked`? Check for
      `./analysis/correlation.md`:
-     - Missing → run Phase 4.
+     - Missing → run Phase 4 (which itself has a baseline-artifact gate —
+       see Phase 4 above).
      - Present but newer `L-CORR-*` leads are `open` → one more Phase 3 wave,
        then Phase 4 again.
      - Correlation stable → Phase 5.

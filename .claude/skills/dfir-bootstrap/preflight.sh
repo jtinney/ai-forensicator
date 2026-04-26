@@ -132,6 +132,16 @@ bin_check suricata-update || true
 bin_check nfdump || true
 bin_check jq || true
 
+# Suricata ET Open ruleset presence + signature count
+SURICATA_RULES_PATH="/var/lib/suricata/rules/suricata.rules"
+if [[ -s "$SURICATA_RULES_PATH" ]]; then
+    sig_count=$(grep -c '^alert' "$SURICATA_RULES_PATH" 2>/dev/null || echo 0)
+    printf "| ET Open ruleset | OK | \`%s\` | %s signatures |\n" "$SURICATA_RULES_PATH" "$sig_count"
+else
+    printf "| ET Open ruleset | MISSING | \`%s\` | run \`sudo suricata-update\` |\n" "$SURICATA_RULES_PATH"
+    (( MISSING_COUNT++ )) || true
+fi
+
 cat <<'EOF'
 
 ## Python
@@ -342,10 +352,16 @@ else
     printf "| windows-artifacts | YELLOW | EZ Tools + regipy + python-evtx all missing — use dfir-bootstrap/parsers/ fallbacks |\n"
 fi
 
-# network-forensics — green when full toolchain present; tier down on partial
+# network-forensics — green when full toolchain present AND ET Open ruleset
+# is populated; YELLOW if Suricata is installed but ET Open is missing (the
+# IDS pass would run with an empty ruleset).
 if command -v tshark >/dev/null 2>&1 && command -v zeek >/dev/null 2>&1 \
    && command -v suricata >/dev/null 2>&1; then
-    printf "| network-forensics | GREEN | tshark + zeek + suricata all present |\n"
+    if [[ -s "$SURICATA_RULES_PATH" ]]; then
+        printf "| network-forensics | GREEN | tshark + zeek + suricata + ET Open ruleset all present |\n"
+    else
+        printf "| network-forensics | YELLOW | tshark + zeek + suricata present but ET Open ruleset MISSING — Suricata IDS pass would run with no signatures; \`sudo suricata-update\` |\n"
+    fi
 elif command -v tshark >/dev/null 2>&1; then
     printf "| network-forensics | YELLOW | tshark present but zeek/suricata missing — display-filter analysis only; install \`zeek\` + \`suricata\` for full coverage |\n"
 else

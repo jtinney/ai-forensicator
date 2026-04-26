@@ -163,6 +163,34 @@ section below maps the same questions to Tier 2/3 commands when needed.
 
 ## Workflow
 
+### 0. Tier-1 baseline gate (MANDATORY when preflight is GREEN)
+
+If `./analysis/preflight.md` reports `network-forensics: GREEN` (i.e. tshark
++ zeek + suricata are all installed), you **MUST** generate the Zeek +
+Suricata baseline before any second `tshark -Y` deep-dive query:
+
+```bash
+mkdir -p ./analysis/network/zeek ./analysis/network/suricata
+( cd ./analysis/network/zeek/ && zeek -C -r ../../../evidence/case.pcap )
+suricata -r ./evidence/case.pcap -l ./analysis/network/suricata/ -k none \
+  -c /etc/suricata/suricata.yaml
+```
+
+**Why mandatory:** structured logs (`conn.log`, `dns.log`, `http.log`,
+`ssl.log`, `eve.json`) answer ~80% of network pivots in one pass and prevent
+the case7 anti-pattern of re-implementing them by hand via 30+ tshark
+queries. tshark deep-dives are for byte-level confirmation of what the
+baseline flags, not the primary triage.
+
+The baseline-artifacts contract below is enforced by
+`.claude/skills/dfir-bootstrap/baseline-check.sh network`. If a required
+artifact is missing when the surveyor's `survey-EV*.md` exists, the
+orchestrator emits an `L-BASELINE-network-NN` lead at priority `high` and
+the next investigator wave runs it FIRST, before any other open lead.
+
+Tshark-only fallback is permitted ONLY when preflight reports tier 2/3 (no
+zeek or no suricata). See § "Fallback workflow" below.
+
 ### 1. Verify the capture (always)
 
 ```bash
@@ -483,6 +511,30 @@ limitation (no network-protocol-aware decoding, no per-flow context) in
 
 Always write to `./analysis/` or `./exports/` — never to `./evidence/` or
 `/mnt/`.
+
+---
+
+## Required baseline artifacts
+
+This block is parsed by
+`.claude/skills/dfir-bootstrap/baseline-check.sh network`. `required` rows
+are checked at every gate; `required-tier1` rows are checked only when
+preflight reports `network-forensics: GREEN`. Missing artifacts produce a
+high-priority `L-BASELINE-network-NN` lead that runs first in the next
+investigator wave.
+
+<!-- baseline-artifacts:start -->
+required: analysis/network/capinfos.txt
+required-tier1: analysis/network/zeek/conn.log
+required-tier1: analysis/network/zeek/dns.log
+required-tier1: analysis/network/suricata/eve.json
+optional: analysis/network/proto-hier.txt
+optional: analysis/network/conv-ip.txt
+optional: analysis/network/conv-ipv6.txt
+optional: analysis/network/dns.csv
+optional: analysis/network/tls-sni.csv
+optional: analysis/network/http.csv
+<!-- baseline-artifacts:end -->
 
 ---
 

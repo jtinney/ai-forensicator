@@ -14,24 +14,52 @@ directly if the case prompt names one (e.g., "memory image" → memory-analysis,
 
 ## Overview
 Use this skill **at the start of every case**, before invoking any other DFIR skill.
-It does four things:
+It does six things:
 
 1. **Preflight** — inventories the SIFT instance's actually-available tools/libraries
-   so the rest of the workflow doesn't burn calls discovering gaps mid-analysis.
+   so the rest of the workflow doesn't burn calls discovering gaps mid-analysis. Now
+   also verifies the Suricata ET Open ruleset is present and populated (post-case7
+   hardening: a Suricata install without rules silently runs an empty IDS pass).
 2. **Installer remediation** — `install-tools.sh` checks what is missing and installs
-   only missing components when run without `--check`.
-3. **Case-init** — creates the full `./analysis/`, `./exports/`, `./reports/` scaffold
-   and seeds the audit log + per-domain `findings.md` stubs the other skills expect.
-4. **Stdlib fallback parsers** — Python scripts in `parsers/` that substitute for missing
-   EZ Tools / regipy / python-evtx when those are absent. They cover the artifact types
-   most cases actually pivot on (Recycle Bin, Prefetch, registry hive strings).
+   only missing components when run without `--check`. `suricata-update` is now a
+   hard fail rather than warn-and-continue if the ET Open sync fails.
+3. **Case-init** — creates the full `./analysis/`, `./exports/`, `./reports/`
+   scaffold AND walks `./evidence/`, sha256-hashes every file, expands any zip /
+   tar / tar.gz / 7z bundle to `./analysis/_extracted/<basename>/`, hashes every
+   extracted member, and seeds `./analysis/manifest.md` with `bundle:*` and
+   `bundle-member` rows so analytic units (the contents inside a bundle) are
+   tracked individually rather than only at the bundle level.
+4. **Audit-log enforcement** — `audit.sh` is the only sanctioned writer of
+   `./analysis/forensic_audit.log`. The PreToolUse hook in
+   `.claude/settings.json` denies direct `>>` / `tee -a` / `sed -i` writes to
+   the log; the PostToolUse hook (`audit-verify.sh`) detects synthetic
+   timestamps written via Python or other bypass paths and appends an
+   `INTEGRITY-VIOLATION` row. `audit-retrofit.sh` is an offline checker for
+   pre-existing audit logs (used to retro-audit case7).
+5. **Per-domain baseline-artifact contracts** — each domain SKILL.md declares
+   a `<!-- baseline-artifacts -->` block listing the structured artifacts the
+   surveyor must produce. `baseline-check.sh <DOMAIN>` parses the block and
+   tests each path; the orchestrator and correlator both invoke it to surface
+   `L-BASELINE-<DOMAIN>-<NN>` leads when a baseline is missing, and that lead
+   runs FIRST in the next investigator wave (post-case7 hardening: case7
+   skipped Zeek + Suricata baselines despite preflight reporting them GREEN).
+6. **Stdlib fallback parsers** — Python scripts in `parsers/` that substitute
+   for missing EZ Tools / regipy / python-evtx when those are absent. They
+   cover the artifact types most cases actually pivot on (Recycle Bin,
+   Prefetch, registry hive strings).
+
+Shared discipline rules that bind every phase agent live in
+`.claude/skills/dfir-discipline/DISCIPLINE.md`. Each agent's prompt loads them
+at the top.
 
 **Why this exists:** the global `~/.claude/CLAUDE.md` advertises tools that are not
 guaranteed to be installed on every SIFT instance. The 2020JimmyWilson case (2026-04-18)
 wasted multiple cycles discovering that `ewf-tools`, `pip`, `python-registry`, `regipy`,
 `python-evtx`, and the entire `/opt/zimmermantools/` directory were absent. Run preflight
 first — then you know up front what the real toolbox is and which skills need their
-fallback path.
+fallback path. Case7 (2026-04-25) added items 4 and 5: agents synthesized
+forensic_audit.log timestamps and skipped Zeek/Suricata baselines despite
+their availability — both now have hook-and-contract enforcement.
 
 ---
 
@@ -139,6 +167,83 @@ bash .claude/skills/dfir-bootstrap/audit.sh \
 Writes a properly-formatted line to `./analysis/forensic_audit.log` with a UTC
 timestamp. Cheaper than remembering the pipe format every time.
 
+**This is now the only sanctioned writer.** The PreToolUse hook denies any
+`>>` / `tee -a` / `sed -i` write to forensic_audit.log:
+
+```bash
+echo "..." >> ./analysis/forensic_audit.log     # DENIED at hook level
+date | tee -a ./analysis/forensic_audit.log     # DENIED at hook level
+bash audit.sh "..." "..." "..."                 # ALLOWED — wall-clock UTC
+```
+
+Read access (cat / head / tail / grep / Read tool) is unaffected. Python
+writes that bypass the hook are caught by `audit-verify.sh` and recorded as
+`INTEGRITY-VIOLATION` rows. See DISCIPLINE.md rule A for the full rationale.
+
+### 5. Verify baseline artifacts per domain
+
+```bash
+# Test whether the network domain has its required baselines (capinfos.txt,
+# zeek/conn.log, zeek/dns.log, suricata/eve.json) present
+bash .claude/skills/dfir-bootstrap/baseline-check.sh network
+
+# Same for any domain
+for d in filesystem timeline windows-artifacts memory yara network; do
+    bash .claude/skills/dfir-bootstrap/baseline-check.sh "$d"
+done
+```
+
+Exit codes: `0` no gap, `1` gap (with JSON missing[] list on stdout), `2`
+preconditions wrong. The orchestrator's resume protocol and the correlator's
+Phase 4 step both call this; missing baselines surface as
+`L-BASELINE-<DOMAIN>-<NN>` leads at priority `high`, run first in the next
+wave. The contract for each domain lives in the matching SKILL.md as a
+`<!-- baseline-artifacts:start --> ... <!-- baseline-artifacts:end -->`
+fenced block.
+
+### 6. Retro-audit a pre-existing audit log (offline)
+
+```bash
+bash .claude/skills/dfir-bootstrap/audit-retrofit.sh \
+    /path/to/old/case/analysis/forensic_audit.log
+```
+
+Writes `<audit-dir>/audit-integrity.md` flagging rows with synthetic
+timestamps (ISO-8601 `T...Z` form), non-monotonic time jumps, same-second
+clusters (>= 4 rows), and unparseable lines. Use to inspect cases that
+predate the PreToolUse / PostToolUse hooks. Read-only — never modifies the
+audit log.
+
+### 7. Hash extracted artifacts in `./exports/`
+
+The `audit-exports.sh` PostToolUse hook auto-hashes everything written
+under `./exports/`. You don't normally call it manually; it fires after
+every Bash/Write/Edit when `./analysis/` exists.
+
+`./exports/` and `./analysis/` serve different forensic roles:
+
+| Dir | Role | Integrity model |
+|---|---|---|
+| `./evidence/` | Original artifacts. | Hashed at intake by case-init (`./analysis/manifest.md` rows). Read-only via permissions deny. |
+| `./analysis/_extracted/<bundle>/` | Bundle members from a zip/tar/7z in `./evidence/`. | Hashed at intake by case-init (`./analysis/manifest.md` rows with `bundle-member` type). |
+| `./analysis/<domain>/*.csv\|json\|txt\|md` | Tool reports / summaries (capinfos, conv-ip, dns.csv, conn.log, eve.json, findings.md, correlation.md). | NOT hashed. Recomputable from original evidence by re-running the tool. |
+| `./exports/**` | Extracted analytic units (carved files, reassembled HTTP objects, tcpflow streams, per-stream pcaps, bulk_extractor output, photorec recoveries, vol windows.dumpfiles output). | Hashed at write by `audit-exports.sh` (`./analysis/exports-manifest.md` rows). Mutations flagged. |
+
+Conclusions chained on top of `./exports/` content (e.g. "this carved
+binary is malware family X") are grounded in bytes whose sha256 is in
+`exports-manifest.md`. A future examiner can verify identity. Mutations
+to a previously-hashed export (sha256 changes) produce a `MUTATED` row —
+investigate.
+
+To inspect what's been tracked:
+
+```bash
+cat ./analysis/exports-manifest.md
+# or just count by type
+grep -cE '\| first-seen \|' ./analysis/exports-manifest.md
+grep -cE '\| MUTATED \|'    ./analysis/exports-manifest.md
+```
+
 ---
 
 ## Fallback Parsers (`parsers/`)
@@ -213,11 +318,31 @@ grep -iE "usbstor|disk&ven" ./analysis/windows-artifacts/hives/SYSTEM.strings.tx
 |--------|------|
 | Preflight report | `./analysis/preflight.md` |
 | Audit log | `./analysis/forensic_audit.log` |
+| Audit-log integrity report (post-hoc) | `./analysis/audit-integrity.md` |
+| Audit-verify sidecar (last-scanned offset) | `./analysis/.audit.lastsize` |
+| Evidence manifest (incl. bundle members) | `./analysis/manifest.md` |
+| Bundle-expanded evidence | `./analysis/_extracted/<basename>/...` |
+| Exports manifest (sha256 of extracted artifacts) | `./analysis/exports-manifest.md` |
+| Exports-sweep sidecar (last-scan mtime) | `./analysis/.exports.lastscan` |
 | Per-domain findings | `./analysis/<domain>/findings.md` |
 | Installer log | `/tmp/dfir-install-<UTC timestamp>.log` |
 | Recycle Bin CSV | `./reports/recyclebin_parsed.csv` |
 | Prefetch CSV | `./reports/prefetch_parsed.csv` |
 | Hive string dumps | `./analysis/windows-artifacts/hives/<HIVE>.strings.txt` |
+
+## Bootstrap helpers reference
+
+| Script | Purpose |
+|---|---|
+| `preflight.sh` | Inventory CLI / Python / EZ Tools / dpkg / ET Open ruleset; emit per-skill GREEN/YELLOW/RED. Idempotent, side-effect-free. |
+| `install-tools.sh` | Install missing tools (apt + pip + dotnet + EZ Tools). `--check` for dry inventory. ET Open sync is a hard fail if it errors. |
+| `case-init.sh <CASE_ID>` | Scaffold `./analysis/`, `./exports/`, `./reports/`. Walk `./evidence/` and expand bundles. Seed manifest.md with sha256 per file + per bundle member. Idempotent — safe to re-run. |
+| `audit.sh "<action>" "<result>" "<next>"` | Append one well-formed wall-clock UTC row to forensic_audit.log. Rejects vague actions. The ONLY sanctioned writer of the audit log. |
+| `audit-pretool-deny.sh` | PreToolUse hook on Bash. Denies `>>` / `tee -a` / `sed -i` to forensic_audit.log. Allows reads (cat/head/tail/grep/Read). Allows audit.sh / audit-verify.sh / audit-retrofit.sh. |
+| `audit-verify.sh` | PostToolUse hook on Bash/Write/Edit. Scans new audit-log appends for ISO-8601 synthetic timestamps and >60s wall-clock drift. Emits `INTEGRITY-VIOLATION` rows via audit.sh. |
+| `audit-retrofit.sh <audit-log>` | One-shot offline checker for an existing audit log. Read-only. Writes `audit-integrity.md` flagging suspect rows. |
+| `audit-exports.sh` | PostToolUse hook (alongside audit-verify.sh). Sweeps `./exports/` and sha256-tracks every file in `./analysis/exports-manifest.md`. Mutations flagged. Idempotent fast path skips when `./exports/` has no new files. |
+| `baseline-check.sh <DOMAIN>` | Per-domain artifact gap detector. Reads the `<!-- baseline-artifacts -->` block in the matching SKILL.md and tests each declared path. Exit 1 with JSON when a `required` artifact is missing. |
 
 ---
 
@@ -229,3 +354,15 @@ grep -iE "usbstor|disk&ven" ./analysis/windows-artifacts/hives/SYSTEM.strings.tx
   hand off to `sleuthkit`, `windows-artifacts`, etc. for the actual analysis.
 - If the user has asked for autonomous operation, preflight still runs; just log the
   results and proceed with whichever path the inventory dictates. Do not stop to ask.
+- The DISCIPLINE.md rules (`.claude/skills/dfir-discipline/DISCIPLINE.md`) are
+  loaded by every phase agent prompt with a `MANDATORY:` line. The first
+  audit-log entry of each agent invocation includes the marker
+  `discipline_v1_loaded` as a self-attestation; bump the version (and update
+  every agent prompt simultaneously) when the rules change substantively.
+- Bundle expansion in case-init.sh is disk-bounded: if the estimated
+  expanded size of an archive exceeds 50% of free disk, the bundle is
+  manifested as `bundle:* | skipped expansion` and an audit entry records
+  the skip. Free disk and re-run, or manually expand outside the case dir.
+- The ET Open ruleset path is `/var/lib/suricata/rules/suricata.rules` on
+  Ubuntu 22.04 + suricata-update package. If preflight reports it MISSING,
+  `sudo suricata-update` re-syncs it (~50K signatures, 41 MB).

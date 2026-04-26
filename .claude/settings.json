@@ -98,10 +98,46 @@
       "Edit(/evidence/**)",
       "Edit(/mnt/**)",
       "Edit(/media/**)",
-      "Edit(/cases/**)"
+      "Edit(/cases/**)",
+      "Write(./analysis/forensic_audit.log)",
+      "Write(analysis/forensic_audit.log)",
+      "Write(**/forensic_audit.log)",
+      "Edit(./analysis/forensic_audit.log)",
+      "Edit(analysis/forensic_audit.log)",
+      "Edit(**/forensic_audit.log)",
+      "Write(./analysis/manifest.md)",
+      "Write(analysis/manifest.md)",
+      "Edit(./analysis/manifest.md)",
+      "Edit(analysis/manifest.md)",
+      "Write(./analysis/exports-manifest.md)",
+      "Write(analysis/exports-manifest.md)",
+      "Edit(./analysis/exports-manifest.md)",
+      "Edit(analysis/exports-manifest.md)"
     ]
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/skills/dfir-bootstrap/audit-pretool-deny.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -d ./analysis ]; then bash .claude/skills/dfir-bootstrap/audit-verify.sh >/dev/null 2>&1 || true; bash .claude/skills/dfir-bootstrap/audit-exports.sh >/dev/null 2>&1 || true; fi"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

@@ -94,8 +94,15 @@ PIP_REQUIRED=(yara-python impacket construct analyzeMFT LnkParse3 regipy)
 
 # Network-forensic apt packages.
 # - tshark pulls in wireshark-common, which provides capinfos / mergecap / editcap.
-# - zeek is in jammy/universe; the upstream Zeek APT repo is fresher but adds
-#   another sources.list entry — stick with universe unless the user opts in.
+# - Zeek is installed from the upstream openSUSE Build Service binary
+#   repository per https://docs.zeek.org/en/current/install.html — handled by
+#   install_zeek_obs() / ensure_zeek_obs_repo() further down. The jammy/universe
+#   `zeek` package is too old (5.x line) for the current network-forensics
+#   workflows and ships without `zkg` and the Spicy toolchain. The OBS package
+#   installs a complete environment under /opt/zeek; we pin to ${ZEEK_OBS_PKG}
+#   (default zeek-7.0, the LTS line called out in the upstream docs) and
+#   symlink /opt/zeek/bin/{zeek,zeek-cut,zeekctl,zkg} into /usr/local/bin so
+#   non-interactive subagent shells find the binaries.
 # - suricata + suricata-update; ET Open rules pulled lazily on first run.
 # - tcpdump / tcpflow / ngrep / nfdump / jq are small, broadly useful CLI helpers.
 NETWORK_APT_REQUIRED=(
@@ -107,7 +114,20 @@ NETWORK_APT_REQUIRED=(
     suricata-update
     jq
 )
-NETWORK_APT_OPTIONAL=(zeek nfdump)
+NETWORK_APT_OPTIONAL=(nfdump)
+
+# Zeek upstream OBS repo (https://docs.zeek.org/en/current/install.html).
+# Override at install time:
+#   ZEEK_OBS_PKG=zeek-8.0 sudo bash install-tools.sh   # pin to a different version
+#   ZEEK_OBS_PKG=zeek      sudo bash install-tools.sh   # follow feature track
+#   ZEEK_OBS_DISTRO=xUbuntu_24.04 ...                   # different host release
+# UBUNTU_VER is "22.04" / "24.04" etc. — OBS uses the xUbuntu_<VER> form.
+ZEEK_OBS_PKG="${ZEEK_OBS_PKG:-zeek-7.0}"
+ZEEK_OBS_DISTRO="${ZEEK_OBS_DISTRO:-xUbuntu_${UBUNTU_VER}}"
+ZEEK_OBS_LIST="/etc/apt/sources.list.d/security:zeek.list"
+ZEEK_OBS_KEYRING="/etc/apt/trusted.gpg.d/security_zeek.gpg"
+ZEEK_PREFIX="/opt/zeek"
+ZEEK_BIN_LINKS=(zeek zeek-cut zeekctl zkg)
 # scapy + dpkt are optional Python helpers — the stdlib parsers in
 # .claude/skills/network-forensics/parsers/ work without either.
 NETWORK_PIP_OPTIONAL=(scapy dpkt)
@@ -312,6 +332,54 @@ ensure_gift_ppa() {
     APT_UPDATED=0
 }
 
+ensure_zeek_obs_repo() {
+    # Install the upstream OBS apt source + signing key per
+    # https://docs.zeek.org/en/current/install.html. File names match the
+    # docs verbatim (security:zeek.list / security_zeek.gpg) so upstream
+    # diagnostics apply directly. Idempotent.
+    local repo_url="https://download.opensuse.org/repositories/security:/zeek/${ZEEK_OBS_DISTRO}"
+    local key_url="https://download.opensuse.org/repositories/security:zeek/${ZEEK_OBS_DISTRO}/Release.key"
+    local need_update=0
+
+    if [[ ! -s "$ZEEK_OBS_LIST" ]]; then
+        if echo "deb ${repo_url}/ /" \
+            | "${SUDO[@]}" tee "$ZEEK_OBS_LIST" >> "$LOGFILE" 2>&1; then
+            ok "Zeek OBS apt source: ${ZEEK_OBS_LIST}"
+            need_update=1
+        else
+            fail "write Zeek OBS apt source ${ZEEK_OBS_LIST}"
+            return 1
+        fi
+    else
+        ok "Zeek OBS apt source already present: ${ZEEK_OBS_LIST}"
+    fi
+
+    if [[ ! -s "$ZEEK_OBS_KEYRING" ]]; then
+        local tmp_asc tmp_gpg
+        tmp_asc=$(mktemp /tmp/zeek-key-XXXXX.asc)
+        tmp_gpg=$(mktemp /tmp/zeek-key-XXXXX.gpg)
+        if curl -fsSL --max-time 15 "$key_url" -o "$tmp_asc" >> "$LOGFILE" 2>&1 \
+            && gpg --dearmor < "$tmp_asc" > "$tmp_gpg" 2>>"$LOGFILE" \
+            && [[ -s "$tmp_gpg" ]] \
+            && "${SUDO[@]}" install -m 0644 "$tmp_gpg" "$ZEEK_OBS_KEYRING" >> "$LOGFILE" 2>&1; then
+            ok "Zeek OBS signing key: ${ZEEK_OBS_KEYRING}"
+            need_update=1
+        else
+            fail "install Zeek OBS signing key from ${key_url}"
+            rm -f "$tmp_asc" "$tmp_gpg"
+            return 1
+        fi
+        rm -f "$tmp_asc" "$tmp_gpg"
+    else
+        ok "Zeek OBS signing key already present: ${ZEEK_OBS_KEYRING}"
+    fi
+
+    if [[ $need_update -eq 1 ]]; then
+        APT_UPDATED=0
+    fi
+    return 0
+}
+
 check_network() {
     # check_network <strict|soft>
     local mode="${1:-strict}"
@@ -412,7 +480,10 @@ run_check_mode() {
     check_pkg_group "Plaso/forensic apt packages" "${PLASO_APT_REQUIRED[@]}"
     check_pkg_group "Plaso optional apt packages" "${PLASO_APT_OPTIONAL[@]}"
     check_pkg_group "Network-forensic apt packages (required)" "${NETWORK_APT_REQUIRED[@]}"
-    check_pkg_group "Network-forensic apt packages (optional)" "${NETWORK_APT_OPTIONAL[@]}"
+    if [[ ${#NETWORK_APT_OPTIONAL[@]} -gt 0 ]]; then
+        check_pkg_group "Network-forensic apt packages (optional)" "${NETWORK_APT_OPTIONAL[@]}"
+    fi
+    check_pkg_group "Zeek (OBS binary, ${ZEEK_OBS_PKG})" "$ZEEK_OBS_PKG"
 
     header "Commands"
     check_cmd_present fls
@@ -426,6 +497,7 @@ run_check_mode() {
     check_cmd_present capinfos
     check_cmd_present tcpdump
     check_cmd_present zeek
+    check_cmd_present zeek-cut
     check_cmd_present suricata
     check_cmd_present jq
 
@@ -446,6 +518,7 @@ run_check_mode() {
     check_path_present "${EZ_DEST}/EvtxeCmd/EvtxECmd.dll" "EvtxECmd.dll"
     check_path_present "${EZ_DEST}/RECmd/RECmd.dll" "RECmd.dll"
     check_path_present "${EZ_DEST}/SQLECmd/SQLECmd.dll" "SQLECmd.dll"
+    check_path_present "${ZEEK_PREFIX}/bin/zeek" "Zeek (OBS install prefix)"
 
     header "Check summary"
     _log "Full log: $LOGFILE"
@@ -786,12 +859,64 @@ install_memory_baseliner() {
     fi
 }
 
+install_zeek_obs() {
+    # Install Zeek from the upstream OBS binary repo per
+    # https://docs.zeek.org/en/current/install.html. Replaces the older
+    # jammy/universe `zeek` install path; pinning keeps us off the auto-
+    # transitioning train upstream warns about ("zeek-lts ... no longer
+    # supported"). Symlinks /opt/zeek/bin/{zeek,zeek-cut,zeekctl,zkg} into
+    # /usr/local/bin so non-interactive shells (orchestrator subagents,
+    # preflight) can find the binaries without sourcing a profile script.
+    header "Zeek (${ZEEK_OBS_PKG} from OBS — ${ZEEK_OBS_DISTRO})"
+
+    if pkg_installed "$ZEEK_OBS_PKG"; then
+        ok "${ZEEK_OBS_PKG}: already installed"
+    else
+        ensure_zeek_obs_repo || return 1
+        ensure_apt_update || return 1
+        apt_fix_broken
+        if ! "${SUDO[@]}" apt-get install -y -qq "$ZEEK_OBS_PKG" >> "$LOGFILE" 2>&1; then
+            local last_err
+            last_err=$("${SUDO[@]}" apt-get install -y "$ZEEK_OBS_PKG" 2>&1 \
+                | grep -E '^(E:|N:|The following packages have unmet dependencies)' \
+                | head -3 | tr '\n' ';' || echo "see $LOGFILE")
+            fail "${ZEEK_OBS_PKG}: install failed (${last_err})"
+            return 1
+        fi
+        ok "${ZEEK_OBS_PKG}: installed"
+    fi
+
+    # Symlink the user-facing binaries onto PATH. We refuse to overwrite a
+    # real file at /usr/local/bin/<name> (would be a previous source-build of
+    # Zeek or an unrelated binary); we only manage symlinks.
+    local bin tgt link
+    for bin in "${ZEEK_BIN_LINKS[@]}"; do
+        tgt="${ZEEK_PREFIX}/bin/${bin}"
+        link="/usr/local/bin/${bin}"
+        if [[ ! -x "$tgt" ]]; then
+            warn "${tgt} not present after install; skipping symlink"
+            continue
+        fi
+        if [[ -e "$link" && ! -L "$link" ]]; then
+            warn "${link} exists and is not a symlink; not overwriting"
+            continue
+        fi
+        if "${SUDO[@]}" ln -sfn "$tgt" "$link" >> "$LOGFILE" 2>&1; then
+            ok "symlink ${link} -> ${tgt}"
+        else
+            warn "could not create symlink ${link}"
+        fi
+    done
+    return 0
+}
+
 install_network_tools() {
     header "Network-forensic tools (tshark / Zeek / Suricata / tcpdump)"
     install_required_packages "network-forensic apt packages" "${NETWORK_APT_REQUIRED[@]}"
     if [[ ${#NETWORK_APT_OPTIONAL[@]} -gt 0 ]]; then
         install_optional_packages "network-forensic optional apt packages" "${NETWORK_APT_OPTIONAL[@]}"
     fi
+    install_zeek_obs
     # tshark is normally a non-interactive install on SIFT, but on stock Ubuntu
     # the postinst asks whether non-root users may capture. We accept the
     # default (No — analysis-only host) by pre-seeding debconf.
@@ -802,13 +927,27 @@ install_network_tools() {
     fi
 
     # Pull baseline ET Open rules so suricata -r works without network access
-    # later. Idempotent — suricata-update tolerates re-run.
+    # later. Idempotent — suricata-update tolerates re-run. Failure here is
+    # treated as a hard fail (post-case7 hardening): a Suricata install
+    # without rules silently runs an empty IDS pass, which produced false
+    # confidence on prior cases. Use --check-versions to detect the case
+    # where suricata-update can't reach its source.
+    SURICATA_RULES_PATH="/var/lib/suricata/rules/suricata.rules"
     if command -v suricata-update >/dev/null 2>&1; then
         if "${SUDO[@]}" suricata-update --no-test >> "$LOGFILE" 2>&1; then
             ok "suricata-update: ET Open rules synced"
         else
-            warn "suricata-update: failed (continuing — rules can be pulled later)"
+            fail "suricata-update FAILED — Suricata IDS will run with no signatures. Re-run with network access to ET Open sources, or pre-stage rules at $SURICATA_RULES_PATH."
         fi
+        # Verify the merged ruleset actually landed on disk
+        if [[ -s "$SURICATA_RULES_PATH" ]]; then
+            sig_count=$(grep -c '^alert' "$SURICATA_RULES_PATH" 2>/dev/null || echo 0)
+            ok "Suricata ET Open ruleset present at $SURICATA_RULES_PATH ($sig_count signatures)"
+        else
+            fail "suricata-update reported success but $SURICATA_RULES_PATH is empty/missing — verify suricata-update sources and re-run."
+        fi
+    else
+        warn "suricata-update not installed — skipping ET Open sync. Install \`suricata-update\` first."
     fi
 
     # Optional Python helpers — never block on these

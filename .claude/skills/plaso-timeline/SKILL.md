@@ -333,6 +333,22 @@ Key filtering strategy in Timeline Explorer:
 
 ---
 
+## Required baseline artifacts
+
+This block is parsed by `.claude/skills/dfir-bootstrap/baseline-check.sh timeline`.
+The full `.plaso` storage is too large to gate on; we declare the lighter
+metadata + a bounded slice as the baseline. Missing required artifacts
+produce a high-priority `L-BASELINE-timeline-NN` lead that runs first in
+the next investigator wave.
+
+<!-- baseline-artifacts:start -->
+optional: analysis/timeline/pinfo.json
+optional: analysis/timeline/timeline-slice.csv
+optional: analysis/timeline/survey-EV01.md
+<!-- baseline-artifacts:end -->
+
+---
+
 ## Pivots — what to do with what you found here
 
 | Found here | Pivot to | Skill |

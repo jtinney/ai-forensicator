@@ -465,6 +465,21 @@ sudo /opt/volatility3-2.20.0/vol.py -f <image.img> windows.psscan
 
 ---
 
+## Required baseline artifacts
+
+This block is parsed by `.claude/skills/dfir-bootstrap/baseline-check.sh memory`.
+Missing required artifacts produce a high-priority `L-BASELINE-memory-NN`
+lead that runs first in the next investigator wave.
+
+<!-- baseline-artifacts:start -->
+optional: analysis/memory/pslist.csv
+optional: analysis/memory/proc_baseline.csv
+optional: analysis/memory/netscan.csv
+optional: analysis/memory/survey-EV01.md
+<!-- baseline-artifacts:end -->
+
+---
+
 ## Pivots — what to do with what you found here
 
 | Found here | Pivot to | Skill |
