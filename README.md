@@ -123,11 +123,6 @@ that multiple domains will get touched.
 
 - `CLAUDE.md` — operator contract: case-start protocol, forensic
   constraints, tool-routing table.
-- `SECURITYREVIEW.md` — autonomous SAST + manual audit of the harness
-  itself (settings.json scope, hooks, audit-log integrity model,
-  evidence-lock model, archive-expansion paths, supply chain in
-  `install-tools.sh`). Refresh after any change to scripts under
-  `.claude/skills/dfir-bootstrap/` or to `.claude/settings.json`.
 - `.claude/skills/` — domain skills (`sleuthkit`, `plaso-timeline`,
   `memory-analysis`, `windows-artifacts`, `network-forensics`,
   `yara-hunting`, `sigma-hunting`), the bootstrap skill
@@ -185,16 +180,17 @@ re-running earlier work (see "Resume is free" above).
 
 ## Security posture
 
-`SECURITYREVIEW.md` is the standing security audit of the harness
-itself — every script under `.claude/skills/dfir-bootstrap/`, the YARA
-and Sigma rule libraries, the parsers, and `.claude/settings.json` are
+The standing security audit of the harness lives in
+[issue #3](https://github.com/jtinney/ai-forensicator/issues/3) —
+every script under `.claude/skills/dfir-bootstrap/`, the YARA and
+Sigma rule libraries, the parsers, and `.claude/settings.json` are
 in scope. The current revision was produced autonomously by Claude
 Opus 4.7 and combines `shellcheck`, `ruff --select=S` (bandit ruleset),
 and a manual review of the audit-log integrity model, the evidence
 read-only lock, archive-expansion paths, and the sudo / curl supply
 chain in `install-tools.sh`. Re-run the review after any change to
-those surfaces; the document records the review date, the commit
-reviewed, and the gap list with severities.
+those surfaces and update the issue (or open a follow-up) with the
+new findings, severities, and commit reviewed.
 
 ## Status
 

@@ -57,12 +57,14 @@ A case is not CLOSED until all five gates pass:
 
 ### Harness security posture
 
-`SECURITYREVIEW.md` (repo root) is the standing audit of the harness
-itself — `.claude/settings.json` permission scope, the PreToolUse /
+The standing audit of the harness lives in
+[issue #3](https://github.com/jtinney/ai-forensicator/issues/3) —
+`.claude/settings.json` permission scope, the PreToolUse /
 PostToolUse / Stop hooks, the audit-log integrity model, the evidence
 read-only lock, archive expansion, and the sudo / curl supply chain in
 `install-tools.sh`. Re-run the review after any change to scripts
-under `.claude/skills/dfir-bootstrap/` or to `.claude/settings.json`.
+under `.claude/skills/dfir-bootstrap/` or to `.claude/settings.json`,
+and update the issue (or open a follow-up) with the new findings.
 
 ---
 
