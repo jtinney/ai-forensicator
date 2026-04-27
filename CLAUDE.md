@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Operator Preferences
 
-- **NEVER ask questions during a task.** Run every workflow fully autonomously start-to-finish. No check-ins, no confirmations, no "shall I proceed?". Deliver final findings only. If blocked, pick the most reasonable path and note it in the output.
+- **Run every workflow fully autonomously start-to-finish.** Deliver final findings only — no check-ins, no confirmations, no "shall I proceed?". If blocked, pick the most reasonable path and note that choice in the output.
 - **EXCEPTION: intake interview.** Chain-of-custody fields in `reports/00_intake.md` are NOT optional. If `bash .claude/skills/dfir-bootstrap/intake-check.sh` reports any blank field, run `bash .claude/skills/dfir-bootstrap/intake-interview.sh` and ask the user. The interview blocks Phases 4 / 5 / 6 until complete. This is the ONE place agent autonomy yields to operator input — the case has no foundation without intake.
 
 ---
@@ -166,3 +166,16 @@ re-running earlier work. Source: `.claude/commands/case.md`.
 | Sigma / EVTX hunting (Chainsaw + Hayabusa) | `@.claude/skills/sigma-hunting/SKILL.md` |
 
 EZ Tools prefer native .NET over WINE. GUI tools (TimelineExplorer, RegistryExplorer) require WINE or the Windows analysis VM.
+
+### Worked example — phase-based orchestration
+
+A typical multi-evidence case (`/case CASE-2026-04 ./evidence/`) flows like:
+
+1. **Phase 1 — `dfir-triage`** (haiku): runs `preflight.sh`, `case-init.sh CASE-2026-04`, classifies each item in `./evidence/` (`.E01` → disk, `.mem` → memory, `.pcap` → pcap), seeds `manifest.md`, runs the intake interview, returns `EV01..EVnn` + per-type counts.
+2. **Phase 2 — `dfir-surveyor` × N parallel** (sonnet): one invocation per (evidence × domain) pair (e.g. `EV01 × windows-artifacts`, `EV01 × memory`, `EV02 × network`). Each runs cheap-signal passes from its domain skill, writes `survey-EV0N.md`, appends 3-5 leads to `leads.md` with format `L-EV01-memory-01`.
+3. **Phase 3 — `dfir-investigator` × N parallel** (sonnet): one per open lead. Sets `status=in-progress` first, runs cheapest disconfirmation queries (DISCIPLINE rule F), writes one findings entry, transitions lead to `confirmed` / `refuted` / `escalated` / `blocked`.
+4. **Phase 4 — `dfir-correlator`** (opus): single invocation. Cross-references all `findings.md` on timestamps / users / hosts / hashes / IPs, writes `correlation.md`. Adds `L-CORR-NN` leads for headline-flipping unknowns; the orchestrator dispatches another Phase 3 wave for those before re-running Phase 4.
+5. **Phase 5 — `dfir-reporter`** (haiku): writes `final.md` (technical) and `stakeholder-summary.md` (business decision-makers, per `exec-briefing` skill). Runs the forbidden-phrase self-grep before returning.
+6. **Phase 6 — `dfir-qa`** (opus): reconciles numerical claims against authoritative artifacts on disk, fixes mismatches in place via `Edit`, writes `qa-review.md`. Verdict: PASS / PASS-WITH-CHANGES / BLOCKED.
+
+A second `/case CASE-2026-04` invocation is idempotent — it resumes at the lowest-remaining phase. The intake interview is the only point where the agent yields control to the operator.

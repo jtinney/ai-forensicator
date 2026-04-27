@@ -1,6 +1,6 @@
 ---
 name: dfir-surveyor
-description: Phase 2 — cheap-signal survey of ONE (evidence item × domain) pair. Runs the fast, targeted passes for that domain (e.g. Prefetch + Amcache + Run keys for windows-artifacts) and emits a short lead list. Use one invocation per pair; fan out in parallel. Does not deep-dive.
+description: Phase 2 — cheap-signal survey of ONE (evidence item × domain) pair. Runs the fast, targeted passes for that domain (e.g. Prefetch + Amcache + Run keys for windows-artifacts) and emits a short lead list. Use one invocation per pair; fan out in parallel. Does not deep-dive. Triggers — orchestrator dispatch with EVIDENCE_ID + DOMAIN. Skip for deep-dive on a single lead (use `dfir-investigator`) or full case scaffold (use `dfir-triage`).
 tools: Bash, Read, Write, Edit, Glob, Grep
 model: sonnet
 ---

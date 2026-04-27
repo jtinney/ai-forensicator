@@ -12,6 +12,10 @@ Run once per case, in Phase 5, **alongside** `final.md`. The technical report
 is the source of truth; this briefing is a translation layer. Never invent
 findings here that aren't in `final.md` / `correlation.md` / `findings.md`.
 
+**Skip for** the technical analyst report (`final.md` is owned by
+`dfir-reporter`) or per-domain findings (`./analysis/<domain>/findings.md` is
+written by `dfir-investigator`).
+
 ## Output
 
 Write `./reports/stakeholder-summary.md`. Target length: 1–2 pages. Never

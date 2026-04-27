@@ -1,7 +1,7 @@
 ---
 name: dfir-reporter
-description: Phase 5 — produce the final case report from findings + correlation. Reads on-disk analysis artifacts only; does not run forensic tools. Runs once at case close.
-tools: Read, Write, Edit, Glob, Grep
+description: Phase 5 — produce the final case report from findings + correlation. Reads on-disk analysis artifacts only; does not run forensic tools. Runs once at case close. Triggers — Phase 5 dispatch after correlation completes, "write final report", "draft stakeholder summary". Skip for fresh investigation (use `dfir-investigator`) or QA pass (use `dfir-qa`).
+tools: Bash, Read, Write, Edit, Glob, Grep
 model: haiku
 ---
 

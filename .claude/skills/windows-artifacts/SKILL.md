@@ -106,108 +106,11 @@ the Tier 2/3 commands when needed.
 
 ## Fallback workflow (Tier 2/3) — when EZ Tools are absent
 
-If preflight reports `EZ Tools root: MISSING`, use these in place of the EZ Tools
-commands documented later. Always append a `./analysis/windows-artifacts/findings.md`
-entry after each pivot so the Analysis Discipline contract is honored even on the
-fallback path.
-
-### Extract hives + artifacts first (TSK-direct, no mount)
-
-```bash
-# Use fls on the E01 directly — no ewfmount needed
-fls -r -o <offset> /path/to/image.E01 > ./analysis/filesystem/fls.txt
-
-# Pull inode numbers for config hives from fls output
-grep -iE "config/(SYSTEM|SOFTWARE|SECURITY|SAM)$" ./analysis/filesystem/fls.txt
-
-# Extract each hive by inode to ./analysis/windows-artifacts/hives/
-icat -o <offset> /path/to/image.E01 <inode> \
-  > ./analysis/windows-artifacts/hives/SYSTEM
-```
-
-Same pattern works for `NTUSER.DAT`, `UsrClass.dat`, `Amcache.hve`,
-`Windows/Prefetch/*.pf`, `Windows/System32/winevt/Logs/*.evtx`, and the
-`$Recycle.Bin` `$I`/`$R` pairs.
-
-### Recycle Bin → CSV (replaces RBCmd)
-
-```bash
-python3 .claude/skills/dfir-bootstrap/parsers/rb_parse.py \
-  ./analysis/windows-artifacts/recyclebin/ \
-  > ./reports/recyclebin_parsed.csv
-```
-
-Output columns match what every case pivots on: `i_file, sid, version, size_bytes,
-deletion_utc, original_path, source`. The SID is parsed from the enclosing
-`$Recycle.Bin/S-1-5-21-...` folder when present — preserve the directory
-hierarchy when extracting to keep it.
-
-### Prefetch → CSV (replaces PECmd)
-
-```bash
-python3 .claude/skills/dfir-bootstrap/parsers/prefetch_parse.py \
-  ./analysis/windows-artifacts/prefetch/ \
-  > ./reports/prefetch_parsed.csv
-```
-
-Supports SCCA versions 17/23/26/30. Correct LastRunTime offsets encoded per
-version — never re-derive from memory, the Win7 (v23) offset is `0x80`, not the
-`0x78` documented in some older guides. MAM-compressed Win10 prefetch is detected
-and skipped with a warning; use PECmd or decompress first for those.
-
-### Registry hive string extraction (degraded replacement for RECmd)
-
-```bash
-python3 .claude/skills/dfir-bootstrap/parsers/hive_strings.py \
-  ./analysis/windows-artifacts/hives/SYSTEM \
-  > ./analysis/windows-artifacts/hives/SYSTEM.strings.txt
-
-# Then grep for what you care about
-grep -iE "USBSTOR#Disk|DiskPeripheral" ./analysis/windows-artifacts/hives/SYSTEM.strings.txt
-grep -iE "MountedDevices|\\?{?[0-9a-f-]{32,}" ./analysis/windows-artifacts/hives/SYSTEM.strings.txt
-grep -iE "TypedPaths|RecentDocs|UserAssist" ./analysis/windows-artifacts/hives/NTUSER.DAT.strings.txt
-```
-
-This is a degraded substitute — it will NOT produce FILETIMEs from cell headers,
-UserAssist ROT13-decoded entries, structured shellbag output, or USBSTOR
-FirstInstallDate/LastWriteTime. For those artifacts, ask the user to
-`sudo apt install python3-regipy` and then use the `regipy` CLI (`regipy-dump`,
-`regipy-plugin-runner`).
-
-### EVTX → readable strings (degraded replacement for EvtxECmd)
-
-```bash
-python3 .claude/skills/dfir-bootstrap/parsers/evtx_strings.py \
-  ./analysis/windows-artifacts/evtx/Security.evtx \
-  --grep "4624|4634|LogonType|TargetUserName" \
-  > ./analysis/windows-artifacts/evtx/Security.strings.txt
-```
-
-Triage only. This cannot reconstruct records, correlate LogonType to 4624, or
-produce a structured logon timeline. When you need that, ask the user to
-`sudo apt install python3-evtx` and switch to `python-evtx`'s `evtx_dump.py`,
-or invoke `EvtxECmd` once EZ Tools are installed.
-
-### Artifact-to-tool fallback matrix
-
-| Artifact | Tier 1 (EZ Tools) | Tier 2 (Python lib) | Tier 3 (stdlib fallback) |
-|---|---|---|---|
-| Prefetch | PECmd | — | `dfir-bootstrap/parsers/prefetch_parse.py` |
-| Recycle Bin ($I) | RBCmd | — | `dfir-bootstrap/parsers/rb_parse.py` |
-| Registry hives | RECmd + batch | regipy / python-registry | `dfir-bootstrap/parsers/hive_strings.py` (degraded) |
-| EVTX | EvtxECmd | python-evtx | `dfir-bootstrap/parsers/evtx_strings.py` (triage) |
-| MFT | MFTECmd | analyzeMFT, pytsk3 | `fls`, `istat` via TSK — inode-level only |
-| Shellbags | SBECmd | regipy-shellbags | — install Tier 1 or Tier 2 |
-| Shimcache | AppCompatCacheParser | regipy-shimcache | — install Tier 1 or Tier 2 |
-| Amcache | AmcacheParser | regipy amcache plugin | — install Tier 1 or Tier 2 |
-| LNK | LECmd | LnkParse3 | — install Tier 1 or Tier 2 |
-| Jump Lists | JLECmd | — | — install Tier 1 |
-| SRUM | SrumECmd | dissect.esedb | — install Tier 1 |
-
-Any cell without a Tier 3 option means you cannot meaningfully parse that
-artifact without at least the Tier 2 library installed. Flag it in
-`./reports/00_intake.md` and request the install before the case goes
-courtroom-ready.
+See `reference/fallback-workflow.md` for the full Tier-2/3 recipes:
+TSK-direct hive extraction (no `ewfmount`), the Recycle Bin / Prefetch /
+hive-strings / EVTX-strings stdlib parsers in `dfir-bootstrap/parsers/`,
+and the artifact-to-tool fallback matrix listing Tier-1 / Tier-2 / Tier-3
+options per artifact type.
 
 ---
 
@@ -768,98 +671,11 @@ dotnet /opt/zimmermantools/EvtxeCmd/EvtxECmd.dll \
 
 ### Key Event IDs
 
-**Logon / Authentication** (`Security.evtx`)
-| Event ID | Description |
-|----------|-------------|
-| 4624 | Successful logon — note LogonType (2=interactive, 3=network, 10=remote interactive) |
-| 4625 | Failed logon |
-| 4647 | User-initiated logoff |
-| 4648 | Logon using explicit credentials (runas, PtH indicator) |
-| 4672 | Special privileges assigned at logon (admin session) |
-| 4776 | NTLM authentication attempt (NTLM vs Kerberos tells network topology) |
-| 4768 | Kerberos TGT request |
-| 4769 | Kerberos service ticket request |
-| 4771 | Kerberos pre-authentication failed |
-
-**Account & Privilege** (`Security.evtx`)
-| Event ID | Description |
-|----------|-------------|
-| 4720 | User account created |
-| 4722 | User account enabled |
-| 4723 / 4724 | Password change / reset |
-| 4726 | User account deleted |
-| 4728 / 4732 / 4756 | Member added to global / local / universal privileged group |
-| 4698 | Scheduled task created |
-| 4699 | Scheduled task deleted |
-| 4702 | Scheduled task updated |
-| 4703 | Token right adjusted |
-
-**Process / Execution** (`Security.evtx`)
-| Event ID | Description |
-|----------|-------------|
-| 4688 | Process created (includes full command line if audit policy enabled) |
-| 4689 | Process exited |
-
-**Object Access** (`Security.evtx`)
-| Event ID | Description |
-|----------|-------------|
-| 4663 | Attempt to access object (file/key read/write/delete) |
-| 4656 | Handle to object requested |
-| 4660 | Object deleted |
-
-**PowerShell** (`Microsoft-Windows-PowerShell%4Operational.evtx`)
-| Event ID | Description |
-|----------|-------------|
-| 4103 | Module logging (each cmdlet call) |
-| 4104 | Script block logging (**full script content — highest value**) |
-| 4105 / 4106 | Script start/stop |
-
-**PowerShell** (`Windows PowerShell.evtx`)
-| Event ID | Description |
-|----------|-------------|
-| 400 | PowerShell engine started (includes HostApplication = command line) |
-| 600 | Provider loaded |
-| 800 | Pipeline execution |
-
-**RDP** (`Microsoft-Windows-TerminalServices-RemoteConnectionManager%4Operational.evtx`)
-| Event ID | Description |
-|----------|-------------|
-| 1149 | RDP authentication success (source IP in event) |
-| 4778 | Session reconnected |
-| 4779 | Session disconnected |
-
-**Defender** (`Microsoft-Windows-Windows Defender%4Operational.evtx`)
-| Event ID | Description |
-|----------|-------------|
-| 1116 | Malware detected |
-| 1117 | Malware action taken (quarantine/delete) |
-| 1118 / 1119 | Malware remediation started/succeeded |
-| 5001 | Real-time protection disabled |
-
-**System** (`System.evtx`)
-| Event ID | Description |
-|----------|-------------|
-| 7034 | Service crashed unexpectedly |
-| 7035 | Service sent start/stop control |
-| 7036 | Service state change |
-| 7040 | Service start type changed |
-| 7045 | New service installed |
-
-**Scheduled Tasks** (`Microsoft-Windows-TaskScheduler%4Operational.evtx`)
-| Event ID | Description |
-|----------|-------------|
-| 106 | Task registered |
-| 129 | Task launched |
-| 200 | Action started |
-| 201 | Action completed |
-
-**WMI** (`Microsoft-Windows-WMI-Activity%4Operational.evtx`)
-| Event ID | Description |
-|----------|-------------|
-| 5857 | WMI provider loaded |
-| 5858 | WMI error (failed connection — recon indicator) |
-| 5860 | Temporary WMI subscription registered |
-| 5861 | Permanent WMI subscription registered (**persistence**) |
+See `reference/event-ids.md` for the full Event-ID reference grouped by EVTX
+channel: Logon/Auth, Account & Privilege, Process/Execution, Object Access,
+PowerShell (both channels), RDP, Defender, System (incl. 7045 service install),
+Scheduled Tasks, and WMI (incl. 5861 permanent subscription = persistence).
+Use the IDs from that reference with `EvtxECmd --inc <ids> --maps`.
 
 ---
 

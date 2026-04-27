@@ -1,6 +1,6 @@
 ---
 name: dfir-triage
-description: Phase 1 — case bootstrap. Run preflight, scaffold the case, inventory and classify every piece of evidence under the case directory, and emit the evidence manifest. Use as the FIRST agent for any new case. Does not analyze artifacts.
+description: Phase 1 — case bootstrap. Run preflight, scaffold the case, inventory and classify every piece of evidence under the case directory, and emit the evidence manifest. Use as the FIRST agent for any new case. Does not analyze artifacts. Triggers — case start, `/case <ID>`, fresh evidence directory. Skip for deep analysis (use `dfir-surveyor` / `dfir-investigator`) or report writing (use `dfir-reporter`).
 tools: Bash, Read, Write, Edit, Glob, Grep
 model: haiku
 ---

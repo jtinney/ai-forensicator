@@ -426,91 +426,11 @@ false positives outside the originating case.
 
 ## Rule conventions (mandatory for `rules/local/`)
 
-Every rule in `rules/local/` and every case-local rule under
-`./analysis/yara/` MUST conform to this convention. The linter
-(`validate-rules.sh`, see below) enforces the required keys and runs
-`yarac` to confirm syntax.
-
-### Required `meta` keys
-
-| Key | Value | Notes |
-|---|---|---|
-| `author`      | string                              | Person or project ("ai-forensicator project library") |
-| `date`        | `YYYY-MM-DD`                        | Authoring date; bump when rule body changes |
-| `description` | one-line string                     | What the rule fires on, not why it matters |
-| `severity`    | `informational` \| `low` \| `medium` \| `high` \| `critical` | Operator's confidence the hit is malicious |
-| `scope`       | `file` \| `memory` \| `both` \| `pcap_payload` \| `unallocated` | What the rule expects to scan |
-
-### Recommended `meta` keys (required under `--strict`)
-
-| Key | Value |
-|---|---|
-| `reference` | URL, CVE ID, paper, or in-house case ID. Vendored rules MUST set this to the upstream source URL + commit. |
-| `mitre`     | Comma-separated ATT&CK technique IDs (e.g. `T1059.001,T1027`) |
-| `family`    | Lowercase malware-family identifier (`emotet`, `cobaltstrike`) |
-| `hash`      | SHA256 of a reference sample, when the rule was authored from one |
-| `tlp`       | `clear` \| `green` \| `amber` \| `amber+strict` \| `red` |
-| `license`   | SPDX ID, `DRL-1.1`, `EL-2.0`, or `Local` |
-| `fp_tested` | `YYYY-MM-DD` of last FP test against goodware |
-| `fp_target` | Path(s) used for the FP test (`/usr/bin`, `/Windows/System32`) |
-
-### Tag vocabulary
-
-YARA tags are how scans get scoped. Use them — `yara --tag=memory rules.yar`
-runs only memory-scoped rules and skips disk-only ones. The accepted vocab:
-
-| Category | Tags |
-|---|---|
-| Scope     | `file`, `memory`, `pcap_payload`, `unallocated` |
-| Format    | `pe`, `elf`, `macho`, `script_ps1`, `script_vbs`, `script_js`, `script_cmd`, `office`, `archive` |
-| Stage     | `loader`, `implant`, `persistence`, `credaccess`, `exfil`, `c2`, `recon`, `ransomware` |
-| Severity  | `sev_critical`, `sev_high`, `sev_medium`, `sev_low`, `sev_info` |
-| Family    | `family_<lowercase_name>` (e.g. `family_emotet`) |
-
-A rule may have multiple tags from each category. Every rule SHOULD have at
-least one `Scope` tag and one `Severity` tag.
-
-### Naming convention
-
-`<Provenance>_<Category>_<Variant>` — letters, digits, underscores only.
-
-| Provenance prefix | Used for |
-|---|---|
-| `Local_`     | Rules under `rules/local/` |
-| `Case<N>_`   | Case-local rules under `./analysis/yara/` (replace N with the case number) |
-| `Sigbase_`   | Mirror of Neo23x0 signature-base (when promoted into local/) |
-| `Yaraforge_` | Mirror of YARAHQ yara-forge |
-| `Elastic_`   | Mirror of elastic/protections-artifacts |
-
-Example: `Local_Emotet_Loader_v3`, `Case42_Lateral_PsExec_Beacon`.
-
-### Performance contract
-
-YARA short-circuits left-to-right. Order conditions cheap → expensive:
-
-```
-condition:
-    uint16(0) == 0x5A4D and    // 1. Fast: 2-byte read at offset 0
-    filesize < 10MB and         // 2. Fast: metadata
-    pe.is_pe and                // 3. Medium: PE parser
-    $str1 and                   // 4. Medium: string match
-    math.entropy(...) > 7.0    // 5. Expensive: full entropy scan — LAST
-```
-
-- Strings ≥ 4 bytes (yara warns below)
-- Regex must be bounded (anchored quantifier, `at` clause, or `filesize<X`)
-- Don't `any of them` against rules whose only strings are short regexes
-
-### False-positive contract
-
-Rules in `rules/local/` SHOULD record an FP test. The validator's
-`--fp-test` flag re-runs the test against `/usr/bin` (and
-`/Windows/System32` if mounted) and warns when a rule fires on more than
-`FP_THRESHOLD` (default 5) goodware files.
-
-If a rule trips heavy goodware, move it to `rules/quarantine/` rather than
-deleting it — keeping it on disk preserves the historical record and lets a
-later analyst re-tighten it.
+See `reference/rule-conventions.md` for the full convention: required and
+recommended `meta` keys, tag vocabulary (Scope / Format / Stage / Severity /
+Family), naming convention by provenance, the performance contract
+(cheap→expensive condition ordering), and the false-positive contract.
+`validate-rules.sh` enforces the required keys and runs `yarac` for syntax.
 
 ---
 
@@ -548,71 +468,12 @@ Exit 0 on clean, 1 on errors, 2 on bad invocation.
 
 ## Vendoring upstream rule sets (`vendor-rules.sh`)
 
-The project does not ship third-party rule packs in git — license terms
-vary and operators may need to make per-source decisions. Pull them on a
-connected workstation, then transfer `rules/vendor/` to isolated SIFT
-instances out-of-band.
-
-```bash
-# Default: yara-forge + signature-base, pinned refs
-bash .claude/skills/yara-hunting/vendor-rules.sh
-
-# Add Elastic protections-artifacts (Elastic License v2 — review terms)
-bash .claude/skills/yara-hunting/vendor-rules.sh --with elastic
-
-# Add ReversingLabs YARA rules (MIT)
-bash .claude/skills/yara-hunting/vendor-rules.sh --with reversinglabs
-
-# Verify on-disk archives match the manifest (run on the SIFT side)
-bash .claude/skills/yara-hunting/vendor-rules.sh --verify-only
-
-# List configured sources, refs, licenses
-bash .claude/skills/yara-hunting/vendor-rules.sh --list
-
-# Wipe the vendor dir
-bash .claude/skills/yara-hunting/vendor-rules.sh --clean
-```
-
-The fetch writes `rules/vendor/vendor-manifest.json` — a deterministic
-record of every archive pulled with source URL, ref, SHA256, license, and
-pull timestamp. Re-running with `--verify-only` re-hashes and detects drift.
-
-### Reputable upstream sources (in rough signal-to-noise order for DFIR)
-
-| Source | License | Notes |
-|---|---|---|
-| **YARAHQ / yara-forge** | MIT (per-rule licenses preserved) | Aggregated, deduped, FP-tested superset of ~15 sources — best "single pull" |
-| **Neo23x0 / signature-base** (Florian Roth) | DRL 1.1 | Broad APT/malware coverage, low FP, attribution required |
-| **Elastic protections-artifacts** | Elastic License v2 | MITRE-tagged YARA + EQL — review redistribution restrictions |
-| **ReversingLabs YARA rules** | MIT | Strong on packers, loaders, droppers |
-| **Volexity / Mandiant / SentinelLabs** | Per-report | Narrow but high-confidence; vendor manually from threat reports |
-| **CISA malware analysis advisories** | Public domain | Per-report rules linked from `cisa.gov/resources-tools/resources/malware-analysis-reports` |
-
-Always promote a vendored rule into `rules/local/` (with the project meta
-convention applied) when it becomes core to the project's hunting baseline.
-Keep the upstream `rules/vendor/` copy unchanged — that preserves the
-chain back to the source repo.
-
-### Tag-based scoping with vendored rules
-
-Vendored sets are typically large. Tag-based scoping is essential to
-keep scan time manageable:
-
-```bash
-# Run only memory-scoped rules across local + vendor
-yara --tag=memory \
-    .claude/skills/yara-hunting/rules/local/ \
-    .claude/skills/yara-hunting/rules/vendor/yara-forge/ \
-    /path/to/memory.img
-
-# Run only ransomware-tagged rules
-yara --tag=ransomware ...
-```
-
-If an upstream set lacks the project's tag vocabulary (most do), the
-operator can promote a curated subset into `rules/local/` with the
-project convention applied — that's where the metadata convention pays
-off across upstream.
+See `reference/vendor-sources.md` for the full vendoring workflow:
+`vendor-rules.sh` invocations (default / `--with elastic` / `--verify-only` /
+`--list` / `--clean`), the reputable-upstream-sources table (yara-forge,
+signature-base, Elastic, ReversingLabs, Volexity/Mandiant, CISA), the
+`vendor-manifest.json` integrity model, and tag-based scoping for vendored
+sets at scan time.
 
 ---
 
@@ -648,59 +509,8 @@ optional: analysis/yara/survey-EV01.md
 
 ## Velociraptor (Enterprise Endpoint Hunting)
 
-Velociraptor is deployed on Windows endpoints in the environment under investigation.
-Connect to the Velociraptor web console to run hunts across live or collected endpoints.
-**It is NOT a local binary on the SIFT workstation.**
-
-### Key Concepts
-- **Artifact:** A named collection/query (e.g., `Windows.System.Pslist`)
-- **Hunt:** Deploy an artifact across multiple endpoints simultaneously
-- **VQL:** Velociraptor Query Language (SQL-like syntax for live system queries)
-
-### Common Artifacts for Threat Hunting
-
-| Artifact | Purpose |
-|----------|---------|
-| `Windows.System.Pslist` | Process listing |
-| `Windows.Sysinternals.Autoruns` | Persistence / ASEPs |
-| `Windows.Network.Netstat` | Active network connections |
-| `Windows.System.TaskScheduler` | Scheduled tasks |
-| `Windows.Forensics.Prefetch` | Execution evidence |
-| `Windows.Forensics.Lnk` | Recent files / LNK files |
-| `Windows.Forensics.SRUM` | SRUM resource usage |
-| `Windows.Forensics.MFT` | MFT parsing |
-| `Windows.EventLogs.EvtxHunter` | Search event logs by keyword |
-| `Windows.Detection.Yara.Process` | YARA scan of process memory |
-| `Windows.Detection.Yara.File` | YARA scan of files on disk |
-| `Windows.Detection.Yara.NTFS` | YARA scan via raw NTFS access |
-
-### Deploy a YARA Hunt (VQL reference)
-```vql
-SELECT * FROM Artifact.Windows.Detection.Yara.Process(
-    YaraRule='''
-rule ExampleRule {
-  strings: $s = "indicator_string" nocase
-  condition: $s
-}
-''')
-```
-
-### VQL — Quick Triage Queries
-
-```vql
--- Find processes with no parent
-SELECT Name, Pid, Ppid, Exe
-FROM pslist()
-WHERE NOT Ppid IN (SELECT Pid FROM pslist())
-
--- Find network connections to non-private IPs
-SELECT Pid, FamilyString, RemoteAddr, RemotePort, Status
-FROM netstat()
-WHERE NOT RemoteAddr =~ "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|::1)"
-
--- Hunt for scheduled tasks with suspicious paths
-SELECT Name, Command, Arguments
-FROM scheduledtasks()
-WHERE Command =~ "(temp|appdata|\\\\users\\\\)" OR
-      Arguments =~ "(powershell|cmd|wscript|mshta)"
-```
+See `reference/velociraptor.md` for the Velociraptor cross-reference:
+key concepts (Artifact / Hunt / VQL), the common artifacts table for
+threat hunting, the YARA-hunt VQL template, and triage VQL queries
+(orphan processes, non-private remotes, suspicious scheduled tasks).
+**Velociraptor is NOT a local SIFT binary** — connect to the web console.

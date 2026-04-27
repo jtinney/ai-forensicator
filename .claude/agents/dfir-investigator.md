@@ -1,6 +1,6 @@
 ---
 name: dfir-investigator
-description: Phase 3 — deep-dive on ONE lead from the leads queue. Loads one domain skill, answers one hypothesis, and writes one findings entry. Use one invocation per lead; fan out in parallel across independent leads.
+description: Phase 3 — deep-dive on ONE lead from the leads queue. Loads one domain skill, answers one hypothesis, and writes one findings entry. Use one invocation per lead; fan out in parallel across independent leads. Triggers — orchestrator dispatch with LEAD_ID per leads.md. Skip for cross-lead correlation (use `dfir-correlator`) or wide survey (use `dfir-surveyor`).
 tools: Bash, Read, Write, Edit, Glob, Grep
 model: sonnet
 ---

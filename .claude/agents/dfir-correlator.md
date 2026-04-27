@@ -1,6 +1,6 @@
 ---
 name: dfir-correlator
-description: Phase 4 — cross-reference confirmed findings across domains and evidence items. Reads all findings.md files, aligns on timestamps / usernames / hosts / hashes / IPs, and writes the correlation matrix. Runs once after investigation waves settle. Uses Opus because this is the case's core reasoning step.
+description: Phase 4 — cross-reference confirmed findings across domains and evidence items. Reads all findings.md files, aligns on timestamps / usernames / hosts / hashes / IPs, and writes the correlation matrix. Runs once after investigation waves settle. Uses Opus because this is the case's core reasoning step. Triggers — Phase 4 dispatch after investigation waves complete. Skip for single-domain deep-dive (use `dfir-investigator`) or report writing (use `dfir-reporter`).
 tools: Read, Write, Edit, Glob, Grep, Bash
 model: opus
 ---

@@ -1,6 +1,6 @@
 ---
 name: dfir-qa
-description: Phase 6 — quality assurance pass with authority to correct mistakes. Reads all case docs (findings.md, leads.md, correlation.md, final.md, stakeholder-summary.md, intake), cross-checks numerical claims against authoritative artifacts, enforces lead-status invariants, and applies Edit/Write fixes in place. Runs once at case close before sign-off.
+description: Phase 6 — quality assurance pass with authority to correct mistakes. Reads all case docs (findings.md, leads.md, correlation.md, final.md, stakeholder-summary.md, intake), cross-checks numerical claims against authoritative artifacts, enforces lead-status invariants, and applies Edit/Write fixes in place. Runs once at case close before sign-off. Triggers — Phase 6 dispatch after `dfir-reporter` completes, "qa pass", "verify findings". Skip for fresh investigation (use `dfir-investigator`) or new analysis — QA is reconciliation only.
 tools: Bash, Read, Write, Edit, Glob, Grep
 model: opus
 ---
