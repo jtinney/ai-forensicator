@@ -237,6 +237,18 @@ chain in `install-tools.sh`. Re-run the review after any change to
 those surfaces and update the issue (or open a follow-up) with the
 new findings, severities, and commit reviewed.
 
+## Acknowledgments
+
+This project started from the **protocol-sift** baseline by **Rob Lee**
+and the SANS DFIR team — <https://github.com/teamdfir/protocol-sift>.
+The case-start protocol, SIFT-workstation conventions, and the original
+operator-contract framing (read-only evidence, deterministic CLI tools
+generate facts, chain-of-custody-as-a-file) are theirs. The
+phase-based multi-agent orchestrator, the `cases/<CASE_ID>/` workspace
+layout, the audit-log integrity hooks, the per-domain baseline-artifact
+contracts, and the SKILL/agent prompts on top are extensions built in
+this repo. Please credit protocol-sift in any derived work.
+
 ## Status
 
 Harness and skills are working end-to-end on SIFT; presentation materials
