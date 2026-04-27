@@ -52,8 +52,17 @@ A case is not CLOSED until all five gates pass:
 | Intake fields populated | `intake-check.sh` | Phases 4 / 5 / 6 |
 | All leads in terminal status | `leads-check.sh` | Phases 4 / 5 / 6 |
 | Per-domain baseline artifacts present | `baseline-check.sh` | Phase 4 |
-| QA pass produced | Phase 6 (`dfir-qa`) | Sign-off |
+| QA pass produced (`reports/qa-review.md`) | Phase 6 (`dfir-qa`) | Sign-off |
 | Final + stakeholder report present | Phase 5 (`dfir-reporter`) | Sign-off |
+
+### Harness security posture
+
+`SECURITYREVIEW.md` (repo root) is the standing audit of the harness
+itself — `.claude/settings.json` permission scope, the PreToolUse /
+PostToolUse / Stop hooks, the audit-log integrity model, the evidence
+read-only lock, archive expansion, and the sudo / curl supply chain in
+`install-tools.sh`. Re-run the review after any change to scripts
+under `.claude/skills/dfir-bootstrap/` or to `.claude/settings.json`.
 
 ---
 
@@ -136,6 +145,11 @@ workbook-update       # update FOR508 workbook
 > the best tool for it; do not default to "the most data" (full Plaso, full
 > memmap dump, recursive YARA against the entire image) when a targeted query
 > answers the question faster.
+
+**Slash-command entrypoint:** `/case <CASE_ID> [evidence-path]`
+launches phase-based orchestration. Idempotent — a second invocation on
+the same case ID resumes from the lowest-remaining phase rather than
+re-running earlier work. Source: `.claude/commands/case.md`.
 
 | Domain | Skill File |
 |--------|-----------|

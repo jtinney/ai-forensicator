@@ -123,6 +123,11 @@ that multiple domains will get touched.
 
 - `CLAUDE.md` — operator contract: case-start protocol, forensic
   constraints, tool-routing table.
+- `SECURITYREVIEW.md` — autonomous SAST + manual audit of the harness
+  itself (settings.json scope, hooks, audit-log integrity model,
+  evidence-lock model, archive-expansion paths, supply chain in
+  `install-tools.sh`). Refresh after any change to scripts under
+  `.claude/skills/dfir-bootstrap/` or to `.claude/settings.json`.
 - `.claude/skills/` — domain skills (`sleuthkit`, `plaso-timeline`,
   `memory-analysis`, `windows-artifacts`, `network-forensics`,
   `yara-hunting`, `sigma-hunting`), the bootstrap skill
@@ -134,6 +139,11 @@ that multiple domains will get touched.
 - `.claude/agents/` — the six phase agents (`dfir-triage`,
   `dfir-surveyor`, `dfir-investigator`, `dfir-correlator`,
   `dfir-reporter`, `dfir-qa`).
+- `.claude/commands/` — slash-command entrypoints. `/case <CASE_ID>
+  [evidence-path]` launches phase-based orchestration (new case or
+  resume).
+- `.claude/reference/` — vendor cheatsheets and blog snapshots used as
+  read-only reference material; not loaded by any skill.
 - `analysis/`, `exports/`, `reports/` — per-case output roots.
 
 ## Case-close gates
@@ -167,8 +177,24 @@ is authoritative. `case-init.sh` scaffolds the output tree and initializes
 investigator phases write it on first append, so its presence is itself
 a signal that a domain has produced analyst output.
 
-From there, invoke `/case` for phase-based orchestration, or let the
-agent route directly to a domain skill when the question is narrow.
+From there, invoke `/case <CASE_ID> [evidence-path]` for phase-based
+orchestration, or let the agent route directly to a domain skill when
+the question is narrow. `/case` is idempotent — a second invocation on
+the same case ID resumes from the lowest-remaining phase rather than
+re-running earlier work (see "Resume is free" above).
+
+## Security posture
+
+`SECURITYREVIEW.md` is the standing security audit of the harness
+itself — every script under `.claude/skills/dfir-bootstrap/`, the YARA
+and Sigma rule libraries, the parsers, and `.claude/settings.json` are
+in scope. The current revision was produced autonomously by Claude
+Opus 4.7 and combines `shellcheck`, `ruff --select=S` (bandit ruleset),
+and a manual review of the audit-log integrity model, the evidence
+read-only lock, archive-expansion paths, and the sudo / curl supply
+chain in `install-tools.sh`. Re-run the review after any change to
+those surfaces; the document records the review date, the commit
+reviewed, and the gap list with severities.
 
 ## Status
 
