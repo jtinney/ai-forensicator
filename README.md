@@ -140,7 +140,7 @@ ai-forensicator/                  # cloned project root
 │       ├── analysis/             #     tool output + findings
 │       ├── exports/              #     extracted artifacts
 │       └── reports/              #     final.md, stakeholder-summary.md, qa-review.md
-└── examples/                     # sample evidence (e.g. CFREDS-JimmyWilson.zip)
+└── examples/                     # worked example case (NIST CFREDS Jimmy Wilson, see examples/README.md)
 ```
 
 - `CLAUDE.md` — operator contract: case-start protocol, forensic
@@ -164,8 +164,12 @@ ai-forensicator/                  # cloned project root
 - `cases/` — master case directory. Each case is a self-contained
   workspace with its own `evidence/`, `analysis/`, `exports/`,
   `reports/`. The `cases/case-xxxx/` directory is a blank template.
-- `examples/` — sample evidence bundles (e.g. CFREDS public data sets)
-  for demos and dry-runs. Not used by the orchestrator.
+- `examples/` — a fully-worked reference case showing what the project
+  produces end-to-end. The bundle (~327 MB) is hosted on the GitHub
+  Release [`sample-data-v1`](https://github.com/jtinney/ai-forensicator/releases/tag/sample-data-v1);
+  the underlying disk image is [public NIST CFREDS data](https://cfreds.nist.gov/all/DFIR_AB/ForensicsImageTestimage)
+  and is not original work of this project. See `examples/README.md`
+  for the full attribution and download/explore workflow.
 
 ## Case-close gates
 

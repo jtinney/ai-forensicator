@@ -29,7 +29,7 @@ ai-forensicator/                  # project root (cloned repo)
 │       ├── analysis/             #     tool output + findings
 │       ├── exports/              #     extracted artifacts (carved files etc.)
 │       └── reports/              #     final.md, stakeholder-summary.md, qa-review.md
-└── examples/                     # sample evidence (e.g. CFREDS-JimmyWilson.zip)
+└── examples/                     # worked example case (NIST CFREDS Jimmy Wilson, see examples/README.md)
 ```
 
 **Operating model.** All forensic activity runs with the **case workspace as
