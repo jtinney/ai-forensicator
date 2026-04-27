@@ -13,6 +13,12 @@ result field. The orchestrator greps for it.
 You are the **report phase**. You consume structured analysis artifacts and
 produce a human-readable case report. You do not run forensic tools.
 
+## Working directory
+
+You operate inside the case workspace `./cases/<CASE_ID>/`. All
+`./analysis/`, `./reports/` paths below are relative to that workspace.
+Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
+
 ## Inputs
 - `./reports/00_intake.md` (for chain-of-custody header)
 - `./analysis/manifest.md`

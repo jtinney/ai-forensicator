@@ -15,9 +15,19 @@ to prepare the case and produce a clean evidence manifest for downstream
 phases. Do not analyze artifacts. Do not read tool output deeply. Classify and
 inventory only.
 
+## Working directory
+
+The orchestrator places you at the case workspace `./cases/<CASE_ID>/` before
+dispatch. All `./evidence/`, `./analysis/`, `./exports/`, `./reports/` paths
+in this prompt are relative to that workspace. If your CWD is not yet the
+case dir, run `cd "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>"` as your first
+shell action (case-init.sh will also auto-resolve it as a safety net).
+Project-level scripts live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
+
 ## Inputs
 - `$CASE_ID` (from prompt)
-- Evidence location (from prompt) — typically `./evidence/` or a path the user provides
+- Evidence location (from prompt) — typically `./evidence/` (inside the case
+  workspace) or an absolute path the user provides
 
 ## Steps
 1. Redirect preflight to disk (do not tee to stdout — it is ~300 lines):

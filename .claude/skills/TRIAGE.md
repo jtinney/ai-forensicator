@@ -26,9 +26,16 @@ below.
 
 ## Phase 0 — Preflight & scaffold (always, ~5 min)
 
+Every case in this project lives under `./cases/<CASE_ID>/`. Create that
+workspace and `cd` into it first; every `./evidence/`, `./analysis/`,
+`./exports/`, `./reports/` path below is relative to it.
+
 ```bash
-bash .claude/skills/dfir-bootstrap/preflight.sh | tee ./analysis/preflight.md
-bash .claude/skills/dfir-bootstrap/case-init.sh <CASE_ID>
+mkdir -p "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>/evidence"
+cd "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>"
+bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/preflight.sh" \
+    | tee ./analysis/preflight.md
+bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/case-init.sh" <CASE_ID>
 ```
 
 Read the preflight summary. **Tier the toolbox before touching evidence:**

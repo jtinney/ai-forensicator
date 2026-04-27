@@ -4,6 +4,21 @@ The orchestrator's protocol for running a DFIR case across the six phase
 agents. Use this entrypoint when the case involves more than one evidence item
 or when context would otherwise balloon past a single session.
 
+## Case workspace
+
+Every case in this project lives under `./cases/<CASE_ID>/`. The orchestrator's
+**first action** for any new or resuming case is to `cd` there:
+
+```bash
+mkdir -p "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>/evidence"
+cd "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>"
+```
+
+Every `./evidence/`, `./analysis/`, `./exports/`, `./reports/` path in this
+file (and in the domain skills, agents, and TRIAGE.md) is relative to that
+workspace. Project-level scripts live at
+`${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
+
 ## Why phases
 
 Context stays small by pushing every phase's raw output to disk and passing

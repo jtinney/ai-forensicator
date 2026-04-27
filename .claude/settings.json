@@ -5,8 +5,14 @@
       "Bash(bash .claude/skills/dfir-bootstrap/case-init.sh:*)",
       "Bash(bash .claude/skills/dfir-bootstrap/audit.sh:*)",
       "Bash(bash .claude/skills/dfir-bootstrap/install-tools.sh:*)",
+      "Bash(bash $CLAUDE_PROJECT_DIR/.claude/skills/dfir-bootstrap/preflight.sh:*)",
+      "Bash(bash $CLAUDE_PROJECT_DIR/.claude/skills/dfir-bootstrap/case-init.sh:*)",
+      "Bash(bash $CLAUDE_PROJECT_DIR/.claude/skills/dfir-bootstrap/audit.sh:*)",
+      "Bash(bash $CLAUDE_PROJECT_DIR/.claude/skills/dfir-bootstrap/install-tools.sh:*)",
       "Bash(python3 .claude/skills/dfir-bootstrap/parsers/*.py:*)",
       "Bash(python3 .claude/skills/network-forensics/parsers/*.py:*)",
+      "Bash(python3 $CLAUDE_PROJECT_DIR/.claude/skills/dfir-bootstrap/parsers/*.py:*)",
+      "Bash(python3 $CLAUDE_PROJECT_DIR/.claude/skills/network-forensics/parsers/*.py:*)",
       "Bash(tshark:*)",
       "Bash(capinfos:*)",
       "Bash(mergecap:*)",
@@ -61,6 +67,8 @@
       "Bash(tr:*)",
       "Bash(date:*)",
       "Bash(tee:*)",
+      "Bash(cd cases/*)",
+      "Bash(mkdir -p cases/*)",
       "Bash(git status:*)",
       "Bash(git log:*)",
       "Bash(git diff:*)",
@@ -81,6 +89,12 @@
       "Edit(./exports/yara_hits/**)",
       "Write(exports/yara_hits/**)",
       "Edit(exports/yara_hits/**)",
+      "Write(cases/*/analysis/**)",
+      "Edit(cases/*/analysis/**)",
+      "Write(cases/*/exports/**)",
+      "Edit(cases/*/exports/**)",
+      "Write(cases/*/reports/**)",
+      "Edit(cases/*/reports/**)",
       "Write(/tmp/*.yar)",
       "Write(/tmp/*.yara)",
       "Write(/tmp/*.rules)"
@@ -93,12 +107,14 @@
       "Write(/evidence/**)",
       "Write(/mnt/**)",
       "Write(/media/**)",
-      "Write(/cases/**)",
+      "Write(cases/*/evidence/**)",
+      "Write(**/evidence/**)",
       "Edit(./evidence/**)",
       "Edit(/evidence/**)",
       "Edit(/mnt/**)",
       "Edit(/media/**)",
-      "Edit(/cases/**)",
+      "Edit(cases/*/evidence/**)",
+      "Edit(**/evidence/**)",
       "Write(./analysis/forensic_audit.log)",
       "Write(analysis/forensic_audit.log)",
       "Write(**/forensic_audit.log)",
@@ -107,12 +123,16 @@
       "Edit(**/forensic_audit.log)",
       "Write(./analysis/manifest.md)",
       "Write(analysis/manifest.md)",
+      "Write(**/analysis/manifest.md)",
       "Edit(./analysis/manifest.md)",
       "Edit(analysis/manifest.md)",
+      "Edit(**/analysis/manifest.md)",
       "Write(./analysis/exports-manifest.md)",
       "Write(analysis/exports-manifest.md)",
+      "Write(**/analysis/exports-manifest.md)",
       "Edit(./analysis/exports-manifest.md)",
-      "Edit(analysis/exports-manifest.md)"
+      "Edit(analysis/exports-manifest.md)",
+      "Edit(**/analysis/exports-manifest.md)"
     ]
   },
   "hooks": {
@@ -122,7 +142,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/skills/dfir-bootstrap/audit-pretool-deny.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/skills/dfir-bootstrap/audit-pretool-deny.sh\""
           }
         ]
       }
@@ -133,7 +153,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -d ./analysis ]; then bash .claude/skills/dfir-bootstrap/audit-verify.sh >/dev/null 2>&1 || true; bash .claude/skills/dfir-bootstrap/audit-exports.sh >/dev/null 2>&1 || true; fi"
+            "command": "if [ -d ./analysis ]; then bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/skills/dfir-bootstrap/audit-verify.sh\" >/dev/null 2>&1 || true; bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/skills/dfir-bootstrap/audit-exports.sh\" >/dev/null 2>&1 || true; fi"
           }
         ]
       }
@@ -143,7 +163,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/skills/dfir-bootstrap/audit-stop.sh >/dev/null 2>&1 || true"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/skills/dfir-bootstrap/audit-stop.sh\" >/dev/null 2>&1 || true"
           }
         ]
       }

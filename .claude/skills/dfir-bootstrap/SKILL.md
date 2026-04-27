@@ -108,11 +108,30 @@ finish a skill's workflow without having appended a single finding to
 
 ## Workflow
 
+### 0. Case workspace
+
+This project keeps a master `cases/` directory at the project root. Every
+case lives under `./cases/<CASE_ID>/`, with its own `evidence/`, `analysis/`,
+`exports/`, `reports/` subtree. Before running any of the steps below,
+create that workspace and `cd` into it (every `./...` path in this skill is
+relative to the case workspace):
+
+```bash
+mkdir -p "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>/evidence"
+cd "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>"
+```
+
+`case-init.sh` also auto-resolves the case workspace as a safety net
+(it walks up to the project root, then `cd`s into `cases/<CASE_ID>/`),
+so calling it from anywhere inside the project still scaffolds the right
+directory.
+
 ### 1. At case start (before evidence arrives)
 
 ```bash
-# Run preflight from the project root
-bash .claude/skills/dfir-bootstrap/preflight.sh | tee ./analysis/preflight.md
+# Preflight: run from inside the case workspace; tool path is project-relative
+bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/preflight.sh" \
+    | tee ./analysis/preflight.md
 ```
 
 Output `./analysis/preflight.md` is a structured inventory:

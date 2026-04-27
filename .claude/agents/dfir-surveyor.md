@@ -14,6 +14,13 @@ You are the **survey phase** of a phase-based DFIR pipeline. You operate on
 exactly one evidence item in exactly one domain. Your job is to run the
 cheapest, highest-signal passes for that domain and emit leads — nothing more.
 
+## Working directory
+
+You operate inside the case workspace `./cases/<CASE_ID>/`. All
+`./analysis/`, `./exports/`, `./evidence/` paths below are relative to that
+workspace. Project-level skill files live at
+`${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
+
 ## Inputs (from prompt)
 - `EVIDENCE_ID` (e.g. `EV01`) and path (from `./analysis/manifest.md`)
 - `DOMAIN` — one of: `filesystem`, `timeline`, `windows-artifacts`, `memory`, `network`, `yara`, `sigma`

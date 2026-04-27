@@ -17,10 +17,22 @@ node_modules/
 Thumbs.db
 
 # DFIR working output (never commit evidence-derived artifacts)
+# - per-case derived directories under cases/<id>/
+cases/*/analysis/
+cases/*/exports/
+cases/*/reports/
+cases/*/evidence/
+# - bare directories at the project root (legacy "project IS case" layout)
 analysis/
 exports/
 reports/
 evidence/
+# - large sample bundles in examples/
+examples/*.zip
+examples/*.tar
+examples/*.tar.gz
+examples/*.7z
+# - common evidence and tool-output extensions, regardless of location
 *.E01
 *.dd
 *.raw

@@ -16,9 +16,10 @@ opposite stance:
 
 1. **Evidence is read-only. Full stop.** Every skill enforces it; every
    agent respects it. All derived output lands in `./analysis/`,
-   `./exports/`, or `./reports/`. Evidence directories are never written
-   to. This is not a lint rule — it is the foundation of a defensible
-   chain of custody.
+   `./exports/`, or `./reports/` *inside the active case workspace
+   (`./cases/<CASE_ID>/`)*. Evidence directories are never written to.
+   This is not a lint rule — it is the foundation of a defensible chain
+   of custody.
 2. **Deterministic tools generate facts; the model only reasons over
    them.** Sleuth Kit, Plaso, Volatility 3, YARA, bulk_extractor, the
    network-forensics stack (tshark / Zeek / Suricata), Sigma-driven EVTX
@@ -121,6 +122,27 @@ that multiple domains will get touched.
 
 ## Repository layout
 
+```
+ai-forensicator/                  # cloned project root
+├── CLAUDE.md                     # operator contract
+├── README.md                     # this file
+├── .claude/                      # tooling — shared across every case
+│   ├── agents/                   #   six phase agents
+│   ├── commands/                 #   /case slash command
+│   ├── settings.json             #   permissions + audit hooks
+│   ├── skills/                   #   ORCHESTRATE, TRIAGE, domain skills
+│   └── reference/                #   vendor cheatsheets, read-only
+├── cases/                        # one subdirectory per case
+│   ├── case-xxxx/                #   blank template (clone or rename)
+│   │   └── evidence/             #     drop evidence here
+│   └── <CASE_ID>/                #   active case workspace
+│       ├── evidence/             #     read-only after case-init
+│       ├── analysis/             #     tool output + findings
+│       ├── exports/              #     extracted artifacts
+│       └── reports/              #     final.md, stakeholder-summary.md, qa-review.md
+└── examples/                     # sample evidence (e.g. CFREDS-JimmyWilson.zip)
+```
+
 - `CLAUDE.md` — operator contract: case-start protocol, forensic
   constraints, tool-routing table.
 - `.claude/skills/` — domain skills (`sleuthkit`, `plaso-timeline`,
@@ -136,10 +158,14 @@ that multiple domains will get touched.
   `dfir-reporter`, `dfir-qa`).
 - `.claude/commands/` — slash-command entrypoints. `/case <CASE_ID>
   [evidence-path]` launches phase-based orchestration (new case or
-  resume).
+  resume); its first action is to `cd` into `./cases/<CASE_ID>/`.
 - `.claude/reference/` — vendor cheatsheets and blog snapshots used as
   read-only reference material; not loaded by any skill.
-- `analysis/`, `exports/`, `reports/` — per-case output roots.
+- `cases/` — master case directory. Each case is a self-contained
+  workspace with its own `evidence/`, `analysis/`, `exports/`,
+  `reports/`. The `cases/case-xxxx/` directory is a blank template.
+- `examples/` — sample evidence bundles (e.g. CFREDS public data sets)
+  for demos and dry-runs. Not used by the orchestrator.
 
 ## Case-close gates
 
@@ -161,9 +187,22 @@ drops `./analysis/.intake-pending` for the orchestrator to surface.
 ## Case start
 
 ```bash
-bash .claude/skills/dfir-bootstrap/preflight.sh | tee ./analysis/preflight.md
-bash .claude/skills/dfir-bootstrap/case-init.sh <CASE_ID>
+# 1. Clone the project, then create a case workspace under cases/.
+mkdir -p ./cases/<CASE_ID>/evidence
+# 2. Drop your evidence into ./cases/<CASE_ID>/evidence/
+cp /path/to/image.E01 ./cases/<CASE_ID>/evidence/
+# 3. Move into the case workspace (every later path is relative to it).
+cd ./cases/<CASE_ID>
+# 4. Bootstrap.
+bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/preflight.sh" \
+    | tee ./analysis/preflight.md
+bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/case-init.sh" <CASE_ID>
 ```
+
+The `cases/case-xxxx/` directory in the cloned repo is a blank template
+you can clone or rename. `case-init.sh` also auto-resolves the case
+workspace (it walks up to find `.claude/`, then `cd`s to
+`cases/<CASE_ID>/`), so it works whether you ran `cd` first or not.
 
 Preflight inventories what is actually installed on this SIFT instance —
 the aspirational tool table in `CLAUDE.md` is often wrong, and preflight
@@ -174,9 +213,11 @@ a signal that a domain has produced analyst output.
 
 From there, invoke `/case <CASE_ID> [evidence-path]` for phase-based
 orchestration, or let the agent route directly to a domain skill when
-the question is narrow. `/case` is idempotent — a second invocation on
-the same case ID resumes from the lowest-remaining phase rather than
-re-running earlier work (see "Resume is free" above).
+the question is narrow. The slash command's first action is to `cd`
+into `./cases/<CASE_ID>/`, so you can launch it from the project root.
+`/case` is idempotent — a second invocation on the same case ID
+resumes from the lowest-remaining phase rather than re-running earlier
+work (see "Resume is free" above).
 
 ## Security posture
 

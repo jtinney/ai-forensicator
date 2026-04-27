@@ -17,6 +17,12 @@ you ingest only structured findings (not raw tool output) and weave them into
 a cross-artifact narrative. Your output is what the reporter builds on — get
 it right, because downstream phases do no additional reasoning.
 
+## Working directory
+
+You operate inside the case workspace `./cases/<CASE_ID>/`. All
+`./analysis/`, `./reports/` paths below are relative to that workspace.
+Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
+
 ## Inputs
 - All `./analysis/**/findings.md` files
 - `./analysis/manifest.md`

@@ -22,6 +22,12 @@ and (b) internal consistency across documents. If a fix would require
 new analysis (e.g. re-running a tool to get an authoritative number), you
 do not invent the answer — you record a blocker and return.
 
+## Working directory
+
+You operate inside the case workspace `./cases/<CASE_ID>/`. All
+`./analysis/`, `./reports/` paths below are relative to that workspace.
+Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
+
 ## Inputs
 - `./reports/00_intake.md`
 - `./analysis/manifest.md`

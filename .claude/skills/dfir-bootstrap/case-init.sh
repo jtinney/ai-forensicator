@@ -4,11 +4,17 @@
 # and seeds forensic_audit.log with a header. Does NOT pre-create findings.md
 # files: the surveyor and investigator phases write them on first append, so an
 # empty / missing findings.md unambiguously means "no analyst output yet."
+#
+# Layout: this project uses a master `cases/` directory; each case lives
+# under `cases/<CASE_ID>/` with its own `evidence/`, `analysis/`, `exports/`,
+# `reports/`. case-init.sh auto-resolves the case dir under the project root
+# (located via $CLAUDE_PROJECT_DIR or by walking up for a `.claude/` marker)
+# and cd's into it before scaffolding. Run from anywhere inside the project;
+# the script does the right thing.
 
 set -u
 
 CASE_ID="${1:-UNSET}"
-PROJECT_ROOT="$(pwd)"
 UTC_NOW="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
 
 if [[ "$CASE_ID" == "UNSET" ]]; then
@@ -17,9 +23,38 @@ if [[ "$CASE_ID" == "UNSET" ]]; then
     exit 2
 fi
 
-echo "[case-init] Case: $CASE_ID"
-echo "[case-init] Root: $PROJECT_ROOT"
-echo "[case-init] UTC:  $UTC_NOW"
+# ---------- project root + case dir resolution ----------
+# Resolve the location of THIS script (and its sibling helpers) BEFORE any
+# cd, otherwise relative $BASH_SOURCE lookups break once we move into the
+# case dir. SCRIPT_DIR is the canonical install path of the bootstrap skill.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+
+# Find the project root (where .claude/ lives). Prefer CLAUDE_PROJECT_DIR
+# when set by the harness; otherwise walk up from CWD looking for .claude/.
+if [[ -n "${CLAUDE_PROJECT_DIR:-}" && -d "${CLAUDE_PROJECT_DIR}/.claude" ]]; then
+    PROJECT_ROOT="$CLAUDE_PROJECT_DIR"
+else
+    PROJECT_ROOT="$(pwd)"
+    while [[ "$PROJECT_ROOT" != "/" && ! -d "$PROJECT_ROOT/.claude" ]]; do
+        PROJECT_ROOT="$(dirname "$PROJECT_ROOT")"
+    done
+fi
+
+# When the project has a cases/ master directory (the standard layout for this
+# repo), every case lives under cases/<CASE_ID>/. Resolve and cd there before
+# scaffolding so all the relative paths below land inside the case workspace.
+# Backward-compat: if neither cases/ nor .claude/ is present at PROJECT_ROOT,
+# fall back to the legacy "CWD IS the case dir" mode.
+if [[ -d "${PROJECT_ROOT}/.claude" ]]; then
+    CASE_DIR="${PROJECT_ROOT}/cases/${CASE_ID}"
+    mkdir -p "${CASE_DIR}/evidence"
+    cd "${CASE_DIR}" || { echo "[case-init] cannot enter ${CASE_DIR}" >&2; exit 1; }
+fi
+
+echo "[case-init] Case:    $CASE_ID"
+echo "[case-init] Project: $PROJECT_ROOT"
+echo "[case-init] Workdir: $(pwd)"
+echo "[case-init] UTC:     $UTC_NOW"
 
 # ---------- directory tree ----------
 dirs=(
@@ -62,7 +97,7 @@ echo "[case-init] directory tree OK"
 
 # ---------- audit log ----------
 AUDIT="./analysis/forensic_audit.log"
-AUDIT_SH="$(dirname "${BASH_SOURCE[0]}")/audit.sh"
+AUDIT_SH="${SCRIPT_DIR}/audit.sh"
 if [[ ! -f "$AUDIT" ]]; then
     # Fresh case: write a clean canonical header and a single open-of-case row.
     # Do NOT carry over noise from prior `claude` sessions in the same dir —
@@ -335,8 +370,8 @@ fi
 # In TTY mode the operator is prompted. In non-TTY mode the script writes
 # ./analysis/.intake-pending and exits nonzero — Phase 1 (triage) then
 # surfaces the pending interview to the user via the orchestrator.
-INTAKE_CHECK_SH="$(dirname "${BASH_SOURCE[0]}")/intake-check.sh"
-INTAKE_INTERVIEW_SH="$(dirname "${BASH_SOURCE[0]}")/intake-interview.sh"
+INTAKE_CHECK_SH="${SCRIPT_DIR}/intake-check.sh"
+INTAKE_INTERVIEW_SH="${SCRIPT_DIR}/intake-interview.sh"
 if [[ -x "$INTAKE_CHECK_SH" ]]; then
     if ! bash "$INTAKE_CHECK_SH" >/dev/null 2>&1; then
         echo "[case-init] intake has blank fields — launching interview"

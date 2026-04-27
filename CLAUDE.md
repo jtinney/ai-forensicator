@@ -10,6 +10,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | **Role** | Principal DFIR Orchestrator |
 | **Evidence Mode** | Strict read-only (chain of custody) |
 
+## Project layout
+
+```
+ai-forensicator/                  # project root (cloned repo)
+├── CLAUDE.md                     # this file
+├── README.md
+├── .claude/                      # tooling — shared across every case
+│   ├── agents/                   #   six phase agents
+│   ├── commands/                 #   /case slash command
+│   ├── settings.json             #   permissions + audit hooks
+│   └── skills/                   #   ORCHESTRATE, TRIAGE, domain skills
+├── cases/                        # one subdirectory per case
+│   ├── case-xxxx/                #   blank template (rename / clone)
+│   │   └── evidence/             #     drop evidence here
+│   └── <CASE_ID>/                #   investigator's case workspace
+│       ├── evidence/             #     read-only after case-init
+│       ├── analysis/             #     tool output + findings
+│       ├── exports/              #     extracted artifacts (carved files etc.)
+│       └── reports/              #     final.md, stakeholder-summary.md, qa-review.md
+└── examples/                     # sample evidence (e.g. CFREDS-JimmyWilson.zip)
+```
+
+**Operating model.** All forensic activity runs with the **case workspace as
+CWD** (`./cases/<CASE_ID>/`). Every `./evidence/`, `./analysis/`, `./exports/`,
+`./reports/` reference in this file, the agents, and the skills is relative to
+that workspace. Project-level scripts are at
+`${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
+
 ---
 
 ## Operator Preferences
@@ -23,21 +51,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Before touching evidence on a new case or a new SIFT instance:
 
-1. **Run preflight:** `bash .claude/skills/dfir-bootstrap/preflight.sh | tee ./analysis/preflight.md`
+1. **Create / enter the case workspace.** Every case in this project lives
+   under `./cases/<CASE_ID>/`. Drop evidence into `./cases/<CASE_ID>/evidence/`,
+   then `cd` into the case directory (every later command is relative to it):
+   ```bash
+   mkdir -p "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>/evidence"
+   cd "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>"
+   ```
+   The blank `./cases/case-xxxx/` directory is the template — clone or rename
+   it as the starting point for new cases.
+2. **Run preflight:**
+   `bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/preflight.sh" | tee ./analysis/preflight.md`
    This inventories *actually installed* tools (not the aspirational list below).
    Trust the preflight output over this file when they disagree.
-2. **Scaffold the case:** `bash .claude/skills/dfir-bootstrap/case-init.sh <CASE_ID>`
-   Creates `./analysis/`, `./exports/`, `./reports/` and an initialized
-   `forensic_audit.log`. Does NOT pre-create per-domain `findings.md`; the surveyor
-   and investigator phases write those on first append, so the presence of a
+3. **Scaffold the case:**
+   `bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/case-init.sh" <CASE_ID>`
+   Creates `./analysis/`, `./exports/`, `./reports/` inside the case workspace
+   and seeds `forensic_audit.log`. `case-init.sh` also auto-resolves the case
+   workspace (it walks up to find `.claude/`, then `cd`s to `cases/<CASE_ID>/`),
+   so calling it from anywhere inside the project still scaffolds the right
+   directory. Does NOT pre-create per-domain `findings.md`; the surveyor and
+   investigator phases write those on first append, so the presence of a
    `findings.md` is itself the signal that a domain has produced analyst output.
-   **Locks the `./evidence/` directory read-only at
-   the filesystem level (`chmod a-w`)** — combined with the PreToolUse harness hook,
-   this gives belt-and-suspenders protection against accidental mutation. **Triggers
-   the intake interview** if `reports/00_intake.md` has any blank chain-of-custody
-   field; in non-TTY mode it leaves `./analysis/.intake-pending` for the orchestrator
-   to surface.
-3. **Follow the Analysis Discipline contract** (documented in every skill's SKILL.md):
+   **Locks the `./evidence/` directory read-only at the filesystem level
+   (`chmod a-w`)** — combined with the PreToolUse harness hook, this gives
+   belt-and-suspenders protection against accidental mutation. **Triggers the
+   intake interview** if `reports/00_intake.md` has any blank chain-of-custody
+   field; in non-TTY mode it leaves `./analysis/.intake-pending` for the
+   orchestrator to surface.
+4. **Follow the Analysis Discipline contract** (documented in every skill's SKILL.md):
    append an entry to `./analysis/forensic_audit.log` after every distinct action, and
    append a finding entry to the matching `./analysis/<domain>/findings.md` after every
    pivot. If either file has no new entries after a skill's workflow runs, that is a
@@ -149,9 +191,12 @@ workbook-update       # update FOR508 workbook
 > answers the question faster.
 
 **Slash-command entrypoint:** `/case <CASE_ID> [evidence-path]`
-launches phase-based orchestration. Idempotent — a second invocation on
-the same case ID resumes from the lowest-remaining phase rather than
-re-running earlier work. Source: `.claude/commands/case.md`.
+launches phase-based orchestration. The command's first action is to
+create `./cases/<CASE_ID>/evidence/` (if missing) and `cd` into the case
+workspace; every subsequent path the agents write is relative to that
+directory. Idempotent — a second invocation on the same case ID resumes
+from the lowest-remaining phase rather than re-running earlier work.
+Source: `.claude/commands/case.md`.
 
 | Domain | Skill File |
 |--------|-----------|
@@ -171,8 +216,11 @@ EZ Tools prefer native .NET over WINE. GUI tools (TimelineExplorer, RegistryExpl
 
 ### Worked example — phase-based orchestration
 
-A typical multi-evidence case (`/case CASE-2026-04 ./evidence/`) flows like:
+A typical multi-evidence case (`/case CASE-2026-04`) flows like:
 
+0. **Workspace setup** (the slash command's first action): `mkdir -p
+   ./cases/CASE-2026-04/evidence && cd ./cases/CASE-2026-04` so the rest of
+   the pipeline operates inside the case workspace.
 1. **Phase 1 — `dfir-triage`** (haiku): runs `preflight.sh`, `case-init.sh CASE-2026-04`, classifies each item in `./evidence/` (`.E01` → disk, `.mem` → memory, `.pcap` → pcap), seeds `manifest.md`, runs the intake interview, returns `EV01..EVnn` + per-type counts.
 2. **Phase 2 — `dfir-surveyor` × N parallel** (sonnet): one invocation per (evidence × domain) pair (e.g. `EV01 × windows-artifacts`, `EV01 × memory`, `EV02 × network`). Each runs cheap-signal passes from its domain skill, writes `survey-EV0N.md`, appends 3-5 leads to `leads.md` with format `L-EV01-memory-01`.
 3. **Phase 3 — `dfir-investigator` × N parallel** (sonnet): one per open lead. Sets `status=in-progress` first, runs cheapest disconfirmation queries (DISCIPLINE rule F), writes one findings entry, transitions lead to `confirmed` / `refuted` / `escalated` / `blocked`.
