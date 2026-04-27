@@ -126,6 +126,7 @@ that multiple domains will get touched.
 ai-forensicator/                  # cloned project root
 ├── CLAUDE.md                     # operator contract
 ├── README.md                     # this file
+├── VALIDATION.md                 # human-reviewer protocol for verifying case output
 ├── .claude/                      # tooling — shared across every case
 │   ├── agents/                   #   six phase agents
 │   ├── commands/                 #   /case slash command
@@ -145,6 +146,10 @@ ai-forensicator/                  # cloned project root
 
 - `CLAUDE.md` — operator contract: case-start protocol, forensic
   constraints, tool-routing table.
+- `VALIDATION.md` — methodical protocol for an independent DFIR
+  analyst to validate a case the orchestrator produced (provenance,
+  reasoning trail, numerical reconciliation, headline-assertion
+  checks). Read this before signing off on any output.
 - `.claude/skills/` — domain skills (`sleuthkit`, `plaso-timeline`,
   `memory-analysis`, `windows-artifacts`, `network-forensics`,
   `yara-hunting`, `sigma-hunting`), the bootstrap skill
@@ -222,6 +227,28 @@ into `./cases/<CASE_ID>/`, so you can launch it from the project root.
 `/case` is idempotent — a second invocation on the same case ID
 resumes from the lowest-remaining phase rather than re-running earlier
 work (see "Resume is free" above).
+
+## Validation — how to verify what the orchestrator produced
+
+AI orchestration is a triage and acceleration aid; the validation,
+interpretation, and final reporting of analysis are the responsibility
+of the human investigator. **[`VALIDATION.md`](./VALIDATION.md)** is
+the reviewer's protocol: a checklist-driven walk through provenance &
+integrity gates, the reasoning trail, numerical reconciliation,
+headline-assertion validation, cross-document consistency, and
+negative-space review. Run it on every case before sign-off.
+
+The worked example case (`sample-data-v1` GitHub Release) is the
+calibration target — every check in `VALIDATION.md` has been verified
+against it, so reviewers can compare "what good looks like" against
+their live case.
+
+This tooling is **not validated for forensic soundness or evidentiary
+reliability** and is **not admissible in court** without independent
+validation, documentation review, and peer scrutiny consistent with
+established forensic standards. `VALIDATION.md` establishes provenance
+and reproducibility — courtroom-quality validation is a larger
+exercise on top.
 
 ## Security posture
 

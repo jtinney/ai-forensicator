@@ -29,6 +29,7 @@ ai-forensicator/                  # project root (cloned repo)
 │       ├── analysis/             #     tool output + findings
 │       ├── exports/              #     extracted artifacts (carved files etc.)
 │       └── reports/              #     final.md, stakeholder-summary.md, qa-review.md
+├── VALIDATION.md                 # human-reviewer protocol for verifying case output
 └── examples/                     # worked example case (NIST CFREDS Jimmy Wilson, see examples/README.md)
 ```
 
