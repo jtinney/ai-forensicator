@@ -27,8 +27,11 @@ Before touching evidence on a new case or a new SIFT instance:
    This inventories *actually installed* tools (not the aspirational list below).
    Trust the preflight output over this file when they disagree.
 2. **Scaffold the case:** `bash .claude/skills/dfir-bootstrap/case-init.sh <CASE_ID>`
-   Creates `./analysis/`, `./exports/`, `./reports/` with `findings.md` stubs and an
-   initialized `forensic_audit.log`. **Locks the `./evidence/` directory read-only at
+   Creates `./analysis/`, `./exports/`, `./reports/` and an initialized
+   `forensic_audit.log`. Does NOT pre-create per-domain `findings.md`; the surveyor
+   and investigator phases write those on first append, so the presence of a
+   `findings.md` is itself the signal that a domain has produced analyst output.
+   **Locks the `./evidence/` directory read-only at
    the filesystem level (`chmod a-w`)** — combined with the PreToolUse harness hook,
    this gives belt-and-suspenders protection against accidental mutation. **Triggers
    the intake interview** if `reports/00_intake.md` has any blank chain-of-custody

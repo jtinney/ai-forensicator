@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # DFIR case scaffold — idempotent; safe to re-run.
-# Creates ./analysis, ./exports, ./reports with the layout every skill expects,
-# seeds forensic_audit.log with a header, and drops findings.md stubs so analysts
-# cannot silently forget the Analysis Discipline contract.
+# Creates ./analysis, ./exports, ./reports with the layout every skill expects
+# and seeds forensic_audit.log with a header. Does NOT pre-create findings.md
+# files: the surveyor and investigator phases write them on first append, so an
+# empty / missing findings.md unambiguously means "no analyst output yet."
 
 set -u
 
@@ -279,37 +280,6 @@ if [[ -d "$EVIDENCE_DIR" ]]; then
 
     echo "[case-init] evidence manifest updated -> $MANIFEST"
 fi
-
-# ---------- findings.md stubs ----------
-findings_template() {
-    local domain="$1"; local outpath="$2"
-    if [[ -f "$outpath" ]]; then
-        return 0  # never clobber existing findings
-    fi
-    cat > "$outpath" <<EOF
-# Findings — $domain — $CASE_ID
-
-> Append one entry per pivot. Each entry: artifact reviewed, finding, interpretation,
-> and the next pivot it triggered. If a skill session produces no entries here,
-> that is a discipline failure — fix before moving on.
-
-<!-- Template
-## <UTC timestamp> — <artifact reviewed>
-- **Finding:** <what you observed>
-- **Interpretation:** <what it means for the case>
-- **Next pivot:** <next action>
--->
-EOF
-}
-
-findings_template "filesystem"        "./analysis/filesystem/findings.md"
-findings_template "windows-artifacts" "./analysis/windows-artifacts/findings.md"
-findings_template "memory"            "./analysis/memory/findings.md"
-findings_template "network"           "./analysis/network/findings.md"
-findings_template "timeline"          "./analysis/timeline/findings.md"
-findings_template "yara"              "./analysis/yara/findings.md"
-findings_template "sigma"             "./analysis/sigma/findings.md"
-echo "[case-init] per-domain findings.md stubs OK"
 
 # ---------- 00_intake.md ----------
 INTAKE="./reports/00_intake.md"

@@ -162,8 +162,10 @@ bash .claude/skills/dfir-bootstrap/case-init.sh <CASE_ID>
 
 Preflight inventories what is actually installed on this SIFT instance —
 the aspirational tool table in `CLAUDE.md` is often wrong, and preflight
-is authoritative. `case-init.sh` scaffolds the output tree with
-`findings.md` stubs and an initialized `forensic_audit.log`.
+is authoritative. `case-init.sh` scaffolds the output tree and initializes
+`forensic_audit.log`. `findings.md` is not pre-created; the surveyor and
+investigator phases write it on first append, so its presence is itself
+a signal that a domain has produced analyst output.
 
 From there, invoke `/case` for phase-based orchestration, or let the
 agent route directly to a domain skill when the question is narrow.

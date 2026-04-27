@@ -14,8 +14,9 @@ Nothing else.
 ## Canonical domain names
 
 All agents and orchestrator dispatches use these seven `DOMAIN` values. They
-match the subdirs `case-init.sh` creates, so the findings.md stubs and
-survey/findings output paths line up without translation.
+match the subdirs `case-init.sh` creates, so survey and findings output paths
+line up without translation. (`findings.md` is not pre-created — the surveyor
+and investigator write it on first append.)
 
 | DOMAIN              | analysis subdir                  | skill file                                      | Purpose                                             |
 |---------------------|----------------------------------|-------------------------------------------------|-----------------------------------------------------|

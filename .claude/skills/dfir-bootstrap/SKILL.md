@@ -98,9 +98,11 @@ Every DFIR skill writes to the same three places:
 - `./reports/00_intake.md` or the active case report — update the narrative when a
   finding changes the headline.
 
-`case-init.sh` creates empty `findings.md` stubs under every domain folder. If you
-finish a skill's workflow without having appended a single finding to `findings.md`,
-that is a discipline failure — fix it before moving on.
+`case-init.sh` does NOT pre-create `findings.md`. The surveyor and investigator
+phases write the file on first append, so an empty / missing `findings.md` is an
+unambiguous signal that the domain has produced no analyst output yet. If you
+finish a skill's workflow without having appended a single finding to
+`findings.md`, that is a discipline failure — fix it before moving on.
 
 ---
 
@@ -164,15 +166,18 @@ This creates (idempotent — safe to re-run):
 ./analysis/
   forensic_audit.log                  # initialized with header
   preflight.md                        # if preflight.sh was run
-  filesystem/findings.md              # stub
-  windows-artifacts/findings.md       # stub
+  manifest.md                         # evidence manifest header
+  filesystem/
+  windows-artifacts/
   windows-artifacts/hives/
   windows-artifacts/evtx/
   windows-artifacts/prefetch/
   windows-artifacts/recyclebin/
-  memory/findings.md                  # stub
-  timeline/findings.md                # stub
-  yara/findings.md                    # stub
+  memory/
+  timeline/
+  network/
+  yara/
+  sigma/
 ./exports/
   files/
   carved/
@@ -180,6 +185,10 @@ This creates (idempotent — safe to re-run):
 ./reports/
   00_intake.md                        # template seeded with case-id + UTC start
 ```
+
+> `findings.md` is NOT pre-created. The surveyor / investigator phases write
+> the file on first append, so the presence of `./analysis/<domain>/findings.md`
+> is itself a signal that the domain has produced analyst output.
 
 ### 4. Append audit entries with `audit.sh`
 
