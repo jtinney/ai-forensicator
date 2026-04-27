@@ -92,7 +92,7 @@ to the invocation that produced it.
      investigator wrote to it), run
      `bash .claude/skills/dfir-bootstrap/baseline-check.sh <DOMAIN>`. For each
      domain whose JSON output reports `missing != []`, append a lead row
-     `L-CORR-BASELINE-<DOMAIN>-<NN>` to `./analysis/leads.md` at priority
+     `L-BASELINE-<DOMAIN>-<NN>` to `./analysis/leads.md` at priority
      `high`, status `open`, hypothesis
      `Re-generate <missing-list> for <DOMAIN>`. **Correlation does NOT
      proceed around a baseline gap** — run a focused Phase 3 wave to fill

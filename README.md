@@ -60,7 +60,7 @@ this is the shape of it.
 | 3 Investigate | `dfir-investigator` | sonnet | one per lead, parallel waves ≤4 | Deep-dive on exactly one lead. Loads one domain skill, answers one hypothesis, writes one findings entry, updates lead status. |
 | 4 Correlate | `dfir-correlator` | **opus** | once per wave | Cross-reference confirmed findings across domains and evidence items — align on timestamps, users, hosts, hashes, IPs. Opus because this is the case's core reasoning step. |
 | 5 Report | `dfir-reporter` | haiku | once | Produce `reports/final.md` (technical) and `reports/stakeholder-summary.md` (non-technical, per the `exec-briefing` skill). Reads artifacts only; runs no forensic tools. |
-| 6 QA | `dfir-qa` | sonnet | once | Quality-assurance pass with authority to correct mistakes in place. Cross-checks numerical claims against authoritative artifacts, enforces lead-status invariants, applies fixes via Edit/Write before sign-off. |
+| 6 QA | `dfir-qa` | **opus** | once | Quality-assurance pass with authority to correct mistakes in place. Cross-checks numerical claims against authoritative artifacts, enforces lead-status invariants, applies fixes via Edit/Write before sign-off. Opus because QA is the last reasoning gate before sign-off. |
 
 ### Why six phases, and why these six
 

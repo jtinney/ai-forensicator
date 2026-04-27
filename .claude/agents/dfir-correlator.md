@@ -44,7 +44,7 @@ it right, because downstream phases do no additional reasoning.
    a non-empty `./analysis/<DOMAIN>/findings.md`, run
    `bash .claude/skills/dfir-bootstrap/baseline-check.sh <DOMAIN>`. Parse the
    JSON output. For any domain whose `missing` array is non-empty, append a
-   lead row `L-CORR-BASELINE-<DOMAIN>-<NN>` to `./analysis/leads.md` at
+   lead row `L-BASELINE-<DOMAIN>-<NN>` to `./analysis/leads.md` at
    priority `high`, status `open`, hypothesis
    `Re-generate <missing-list> for <DOMAIN>`. **Do NOT correlate around the
    gap** — return to the orchestrator with an explicit "baseline-incomplete"
