@@ -452,6 +452,28 @@ preference.**
    Use this form when the tool itself emits a directory tree we don't
    control.
 
+   **Worked example — Sigma matched-event byte extracts.** Sigma hunting
+   is the canonical use case for this exception (see
+   `.claude/skills/sigma-hunting/SKILL.md` § Hunting workflow step 6).
+   `<rule_id>` is the rule's filename minus the `.yml` extension so the
+   matched-record corpus is self-describing without a sidecar map; each
+   `event-<record_id>.jsonl` is one EVTX record promoted to layer 4 so
+   downstream skills (YARA, correlator joins, report citations) chain
+   on a fingerprinted artifact:
+
+   ```
+   exports/sigma_hits/EV01/proc_creation_win_powershell_encoded_invocation/event-12345.jsonl
+   exports/sigma_hits/EV01/file_event_win_susp_office_doc_drop/event-67890.jsonl
+   exports/sigma_hits/EV02/proc_creation_win_powershell_encoded_invocation/event-22001.jsonl
+   ```
+
+   `case-init.sh` pre-scaffolds `./exports/sigma_hits/` (the empty parent
+   dir) — per-EVID and per-rule subdirs are created lazily by the
+   sigma-hunting workflow as matches are written. `audit-exports.sh`
+   walks the tree depth-unbounded, so each `event-*.jsonl` lands in
+   `analysis/exports-manifest.md` with a `first-seen` row regardless
+   of its depth.
+
 3. **Survey / findings (layer 3) keep the existing pattern.** Per-
    evidence survey stubs go to `analysis/<domain>/survey-EV01.md`,
    `survey-EV02.md`, … but `analysis/<domain>/findings.md` is

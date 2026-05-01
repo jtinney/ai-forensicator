@@ -97,14 +97,51 @@ The skill rule library is namespace-partitioned identically to
 └── *.yml         — Chainsaw field-mapping files (sigma → EVTX field names)
 ```
 
-**Per-case output:**
+**Per-case output routing.** Sigma hunting produces two classes of output;
+they go to different layers per the canonical layer model documented in
+`.claude/skills/dfir-discipline/DISCIPLINE.md` ("Layer model" subsection
+under Rule A). Bytes-as-analytic-unit go to `./exports/`; summaries-of-
+bytes-elsewhere go to `./analysis/`.
+
+**Summaries → `./analysis/sigma/`** (layer 3 — tool reports). Recomputable
+from the source EVTX corpus by re-running Chainsaw / Hayabusa. NOT
+fingerprinted (the source of truth is `./evidence/`):
+
 ```
-./analysis/sigma/                        ← per-case rules + scan output
-./analysis/sigma/rules-EV01.yml          ← case-local rules (one or many)
-./analysis/sigma/hits-EV01/              ← chainsaw CSV output per evtx
-./analysis/sigma/timeline-EV01.csv       ← hayabusa csv-timeline output
-./analysis/sigma/rules-enumerated.txt    ← required baseline (see § gate)
+./analysis/sigma/                          ← per-case rules + scan output
+./analysis/sigma/rules-EV01.yml            ← case-local rules (one or many)
+./analysis/sigma/hits-EV01/                ← chainsaw CSV output (one CSV
+                                             per rule that fired + Hits.csv)
+./analysis/sigma/hits-EV01/Hits.jsonl      ← chainsaw --jsonl summary (when used)
+./analysis/sigma/hayabusa-timeline-EV01.csv ← hayabusa csv-timeline output
+./analysis/sigma/survey-EV01.md            ← surveyor write-up per evidence item
+./analysis/sigma/findings.md               ← consolidated investigator findings
+./analysis/sigma/rules-enumerated.txt      ← required baseline (see § gate)
 ```
+
+**Matched-event byte extracts → `./exports/sigma_hits/<EVID>/<rule_id>/`**
+(layer 4 — derived artifacts). The actual EVTX record dumps a Chainsaw or
+Hayabusa rule surfaced — distinct analytic units that downstream skills
+(YARA, disassembly, registry pivot) chain conclusions on. Fingerprinted by
+`audit-exports.sh` into `analysis/exports-manifest.md`. Per Rule L's
+directory-tree exception (`.claude/skills/dfir-discipline/DISCIPLINE.md`):
+
+```
+./exports/sigma_hits/<EVID>/<rule_id>/event-<record_id>.jsonl
+./exports/sigma_hits/EV01/proc_creation_win_powershell_encoded_invocation/event-12345.jsonl
+./exports/sigma_hits/EV01/file_event_win_susp_office_doc_drop/event-67890.jsonl
+./exports/sigma_hits/EV02/proc_creation_win_powershell_encoded_invocation/event-22001.jsonl
+```
+
+`<EVID>` is the manifest evidence id (`EV01`, `EV02`, …) the surveyor /
+investigator agent prose receives at dispatch — see Phase 1 (`dfir-triage`)
+output. `<rule_id>` is the rule's filename minus the `.yml` extension so
+the matched-record corpus is self-describing without a sidecar map.
+
+Chainsaw and Hayabusa themselves emit only summary CSVs/JSONL — neither
+tool dumps matched-event bytes natively. Byte extracts are produced by
+post-processing the summary's `record_id` + `channel` columns through
+`evtx_dump` (see Hunting workflow § 6 below).
 
 ---
 
@@ -321,6 +358,12 @@ done | sort -k2 -nr
 
 ### 2. Run Sigma rules with Chainsaw
 
+`<EVID>` below is the manifest evidence id (`EV01`, `EV02`, …) the agent
+receives at dispatch. Substitute the concrete value when invoking. The
+`--csv` summary writes to `./analysis/sigma/` (layer 3); matched-event
+byte extracts are produced as a separate post-processing step (§ 6) and
+land under `./exports/sigma_hits/<EVID>/<rule_id>/` (layer 4).
+
 ```bash
 chainsaw hunt /path/to/evtx \
     -s .claude/skills/sigma-hunting/rules/local/ \
@@ -332,7 +375,9 @@ chainsaw hunt /path/to/evtx \
 
 Chainsaw writes one CSV per Sigma rule that produced any hit, plus a
 `Hits.csv` summary. Each hit has columns: `timestamp`, `detections`,
-`channel`, `event_id`, `record_id`, plus the rule-defined `fields`.
+`channel`, `event_id`, `record_id`, plus the rule-defined `fields`. The
+`record_id` + `channel` pair is the join key for the byte-extract step
+in § 6.
 
 ### 3. Run Chainsaw's bundled hunting rules
 
@@ -354,23 +399,63 @@ When you want everything-at-once instead of a guided hunt:
 hayabusa csv-timeline \
     -d /path/to/evtx \
     -o ./analysis/sigma/hayabusa-timeline-EV01.csv \
+    --UTC \
     --no-summary
 ```
 
 Hayabusa output columns: `Timestamp`, `Computer`, `Channel`, `Level`,
 `EventID`, `RuleTitle`, `Details`, `RecordID`, `RuleAuthor`, `RuleModifiedDate`,
-`Status`, `RuleID`. Filter by `Level=crit` for the first triage pass.
+`Status`, `RuleID`. Filter by `Level=crit` for the first triage pass. The
+`RecordID` + `Channel` pair feeds the byte-extract step in § 6.
 
 ### 5. Pivot from hit → host artifact
 
 Every Sigma hit cites `record_id` and `channel`. To re-read the underlying
-event from the original EVTX:
+event from the original EVTX in-place (no extract written):
 
 ```bash
-# Extract the exact record by ID
+# Inspect the exact record by ID without producing a derived artifact
 evtx_dump -t 1 -o jsonl /path/to/Security.evtx \
     | jq 'select(.Event.System.EventRecordID == 12345)'
 ```
+
+### 6. Extract matched-event bytes → `./exports/sigma_hits/<EVID>/<rule_id>/`
+
+When a Sigma / Hayabusa hit becomes a chainable analytic unit (YARA target,
+correlator join key, downstream report citation), promote the underlying
+EVTX record to layer 4 so it gets fingerprinted by `audit-exports.sh` and
+survives chain-of-custody. Use the rule's filename (less the `.yml`
+extension) as `<rule_id>` so the directory is self-describing. Per Rule L
+(directory-tree exception, see DISCIPLINE.md):
+
+```bash
+EVID=EV01
+rule_id="proc_creation_win_powershell_encoded_invocation"
+record_id=12345                                             # from Hits.csv / hayabusa-timeline.csv
+channel="Microsoft-Windows-Sysmon%4Operational"             # from Hits.csv / hayabusa-timeline.csv
+src_evtx="/path/to/${channel}.evtx"
+
+mkdir -p "./exports/sigma_hits/${EVID}/${rule_id}/"
+
+# Write the JSON dump of the single matched record. The byte sequence —
+# this JSON dump — is the analytic unit a downstream investigator pivots on.
+evtx_dump -t 1 -o jsonl "$src_evtx" \
+    | jq -c --argjson rid "$record_id" \
+        'select(.Event.System.EventRecordID == $rid)' \
+    > "./exports/sigma_hits/${EVID}/${rule_id}/event-${record_id}.jsonl"
+
+# Audit row links the source EVTX to the export so chain-of-custody is intact.
+bash .claude/skills/dfir-bootstrap/audit.sh \
+    "sigma-hit byte-extract" \
+    "extracted ${rule_id} record ${record_id} from ${EVID} channel ${channel}" \
+    "audit-exports.sh PostToolUse hook fingerprints into exports-manifest.md"
+```
+
+`audit-exports.sh` walks `./exports/` depth-unbounded, so each new
+`event-<record_id>.jsonl` lands in `analysis/exports-manifest.md` with a
+`first-seen` row. Per-rule subdirs collate every match for that detection
+under one path, and per-EVID parents keep the multi-host corpus organized
+without filename collisions across hosts (Rule L worked example).
 
 ---
 
@@ -387,6 +472,7 @@ optional: analysis/sigma/rules-EV01.yml
 optional: analysis/sigma/hits-EV01/Hits.csv
 optional: analysis/sigma/hayabusa-timeline-EV01.csv
 optional: analysis/sigma/survey-EV01.md
+optional: exports/sigma_hits/EV01/
 <!-- baseline-artifacts:end -->
 
 ---
