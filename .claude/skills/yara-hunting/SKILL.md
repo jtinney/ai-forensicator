@@ -407,15 +407,21 @@ fired:
                     custody. NOT included in default sweeps.
 ```
 
-**Per-case output:**
+**Per-case output (follows the canonical layer model in
+`.claude/skills/dfir-discipline/DISCIPLINE.md` "Layer model" subsection):**
 ```
-./analysis/yara/                         ← per-case rules + scan output
+./analysis/yara/                         ← per-case rules + scan summaries (layer 3)
 ./analysis/yara/rules-EV01.yar           ← case-local rules (one per evidence)
 ./analysis/yara/rules-EV01.compiled      ← yarac-compiled binary
-./analysis/yara/yara-hits-EV01.txt       ← scan hits
+./analysis/yara/yara-hits-EV01.txt       ← scan hit summaries
 ./analysis/yara/rules-enumerated.txt     ← required baseline (see § gate)
+./exports/yara_hits/                     ← byte extracts of files that matched (layer 4)
 ./reports/                               ← finalized IOC sweep reports
 ```
+
+Multi-evidence cases append the EVID per Rule L: hit summaries
+`yara-hits-EV02.txt` are sibling files; byte-extract subdirs are
+`exports/yara_hits/EV01/`, `exports/yara_hits/EV02/`.
 
 A scan that loads `rules/local/` + `rules/vendor/<source>/` is **reusable**.
 A scan that loads `rules/legacy/` is **not** — those files contain

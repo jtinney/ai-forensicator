@@ -324,6 +324,14 @@ Key filtering strategy in Timeline Explorer:
 
 ## Output Paths
 
+Routing follows the canonical layer model in
+`.claude/skills/dfir-discipline/DISCIPLINE.md` ("Layer model" subsection).
+The super-timeline CSV is one-per-case (not per-domain), so it lives at
+the `./exports/` root rather than a domain subdir. The `.plaso` storage
+itself is layer-3 (recomputable from evidence) and stays in `./analysis/`.
+Multi-evidence cases append the EVID to filtered slices per Rule L if
+applicable.
+
 | Output | Path |
 |--------|------|
 | Plaso storage | `./analysis/<CASE_ID>.plaso` |

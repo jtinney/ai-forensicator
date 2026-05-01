@@ -44,6 +44,40 @@ survive cross-examination.
   if you didn't run the action at the time the audit row claims, do not
   write the row at all.
 
+### Layer model — what lives where, and why each layer's ledger is distinct
+
+The case workspace `./cases/<CASE_ID>/` has **five layers**, each with a
+distinct mutability and integrity contract. Rule A.2 (below) is the
+mechanical enforcement for Layer 4; the other layers' contracts are
+documented here so an agent can answer "where does this file go?"
+deterministically without consulting the project README.
+
+| # | Layer | Path | Origin | Mutability | Integrity ledger | Hook |
+|---|-------|------|--------|------------|------------------|------|
+| 1 | Original evidence | `./evidence/` | Operator drop at intake | Read-only after intake (`chmod a-w` recursive) | `analysis/manifest.md` | Permission deny + filesystem lock |
+| 2 | Bundle expansion | `./analysis/_extracted/<bundle>/` | `case-init.sh` expanding archives at intake | Read-only by convention | `analysis/manifest.md` (`bundle-member` rows) | None — manifest-locked at write-once intake |
+| 3 | Tool reports | `./analysis/<domain>/` | Surveyor + investigator output (CSVs, JSON, `findings.md`, `survey-EVnn.md`) | Mutable (recomputable) | None — by design | audit-log hooks only |
+| 4 | Derived artifacts | `./exports/<domain>/...` | Carved bytes, exported hives, dumped memory regions, sliced pcaps, reassembled HTTP objects | Write-once; mutation = chain-of-custody concern | `analysis/exports-manifest.md` | `audit-exports.sh` PostToolUse, depth-unbounded |
+| 5 | Reports | `./reports/` | Final deliverables (`final.md`, `stakeholder-summary.md`, `qa-review.md`, `00_intake.md`) | Mutable | None | None |
+
+**Decision rule when an agent writes a file:** is the file's *byte
+sequence* the analytic unit, or is the file a *summary* of bytes that
+live elsewhere? Bytes go to `./exports/`. Summaries (CSV, JSON,
+markdown) go to `./analysis/`. Layer 2 is the only place inside
+`./analysis/` where bytes legitimately live, and only because they came
+from layer 1 at intake (manifest-tracked as bundle members) and never
+moved.
+
+**Why layer 2 is NOT under `./exports/`:** bundle members are *original*
+evidence — the bytes the operator delivered, just unpacked from a
+container. They are tracked by `manifest.md` (the original-evidence
+ledger), not `exports-manifest.md` (the derivative-artifact ledger).
+Putting them under `./exports/` would double-track them, collapse the
+layers, and make the path ambiguous about whether a file is operator-
+supplied evidence or agent-derived artifact.
+
+---
+
 ### A.2 — Extracted artifacts under `./exports/` are sha256-tracked
 
 **Every file written under `./exports/` is an *extracted artifact* — a
@@ -386,6 +420,67 @@ yields to operator input.** The intake interview is exempt from the
 
 ---
 
+## Rule L — Multi-evidence path encoding
+**(binds: dfir-surveyor, dfir-investigator, dfir-correlator)**
+
+**When more than one evidence item writes into the same
+`./exports/<domain>/` subdir, the path MUST encode the originating
+evidence ID. Two patterns are allowed; pick by artifact shape, not by
+preference.**
+
+1. **Default — EV-suffix in filename.** Use `<artifact>-<EVID>.<ext>`.
+   Examples:
+   - `exports/network/slices/dns-EV01.pcap`,
+     `exports/network/slices/dns-EV02.pcap`
+   - `exports/files/cmd-EV01.exe`, `exports/files/cmd-EV02.exe`
+   - `exports/yara_hits/ioc-sweep-EV01.txt`
+   Keeps the per-domain export dir flat and grep-friendly:
+   `find ./exports/network/slices -name 'dns-*.pcap'` produces the
+   per-evidence list trivially.
+
+2. **Required exception — directory-tree artifacts.** When the artifact
+   is itself a directory (registry hive batch export, MFT + LogFile +
+   UsnJrnl trio, `tsk_recover` recovery output, `bulk_extractor`
+   per-extractor dirs, Sigma matched-event byte dumps), use
+   `exports/<domain>/<EVID>/<artifact-tree>/`. Examples:
+   - `exports/registry/EV01/{SOFTWARE,SYSTEM,SAM,SECURITY}` and
+     `exports/registry/EV02/{SOFTWARE,SYSTEM,SAM}` as siblings
+   - `exports/tsk_recover/EV01/`, `exports/tsk_recover/EV02/`
+   - `exports/sigma_hits/EV01/<rule_id>/<event-N>.evtx` (Chainsaw /
+     Hayabusa matched-event byte extracts — each rule gets a subdir,
+     each match a separate EVTX record dump)
+   Use this form when the tool itself emits a directory tree we don't
+   control.
+
+3. **Survey / findings (layer 3) keep the existing pattern.** Per-
+   evidence survey stubs go to `analysis/<domain>/survey-EV01.md`,
+   `survey-EV02.md`, … but `analysis/<domain>/findings.md` is
+   **consolidated per domain across evidence items** — do NOT create
+   per-evidence subdirs in `./analysis/<domain>/`.
+
+**Why filename-encoding as default:** `audit-exports.sh` walks
+`./exports/` depth-unbounded so either form gets fingerprinted.
+Filename-encoding keeps related artifacts collated in one directory and
+grep-friendly. The directory form is reserved for cases where the tool
+itself emits a tree we don't control.
+
+**How to apply:**
+- Surveyor / investigator: when writing into `./exports/<domain>/`,
+  always include the `EVID` in the path. If you cannot tell from the
+  artifact alone which evidence item it came from, that is a chain-of-
+  custody gap — fix the path encoding before writing.
+- Correlator: when aggregating across evidence items, treat the EV-
+  suffix (or per-EVID subdir) as the join key. A file in
+  `./exports/<domain>/` without an `EVID` in its path is unattributed
+  — flag it as a discipline failure rather than guessing.
+- QA: `audit-exports.sh` does not enforce the suffix mechanically. The
+  QA pass MUST grep `./exports/` for filename collisions across
+  evidence items (`<artifact>.<ext>` instead of `<artifact>-<EVID>.<ext>`)
+  in cases where `manifest.md` lists ≥2 evidence items, and Edit-fix
+  the offending paths before sign-off.
+
+---
+
 ## Cross-rule notes
 
 - The DISCIPLINE.md path is referenced from each agent's frontmatter as
@@ -403,6 +498,12 @@ yields to operator input.** The intake interview is exempt from the
   rule is opt-in for the writer (the line is optional) but mandatory for
   the validator (if present, must validate). Extending the TSV is the
   expected response when a real technique is missing.
+- Rule L (multi-evidence path encoding) is agent-prompt-level
+  discipline at write time and QA-enforced at sign-off:
+  `audit-exports.sh` fingerprints every file under `./exports/` but
+  does not mechanically reject collision-prone names — the QA pass
+  greps `./exports/` for un-suffixed artifacts when `manifest.md`
+  records ≥2 evidence items and Edit-fixes the offending paths.
 - When in doubt about whether a borderline item is in scope (G) or
   whether the surface is exhausted (H), prefer the more conservative
   (in-scope / not-exhausted) choice. The cost of an extra lead is one

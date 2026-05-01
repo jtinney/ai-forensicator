@@ -529,6 +529,15 @@ gap in `00_intake.md`).
 
 ## Output Paths
 
+Routing follows the canonical layer model in
+`.claude/skills/dfir-discipline/DISCIPLINE.md` ("Layer model" subsection):
+Zeek/Suricata logs, capinfos, conversation tables, and per-protocol
+CSVs are layer-3 summaries under `./analysis/network/`. Sliced pcaps,
+reassembled HTTP objects, tcpflow streams, and per-stream pcaps are
+layer-4 byte extracts under `./exports/network/{slices,carved,http_objects,tcpflow,streams}/`.
+Multi-evidence cases append the EVID per Rule L (e.g.
+`exports/network/slices/dns-EV01.pcap`, `dns-EV02.pcap`).
+
 | Output | Path |
 |--------|------|
 | Capture metadata | `./analysis/network/capinfos.txt` |

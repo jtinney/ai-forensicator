@@ -709,6 +709,15 @@ dotnet /opt/zimmermantools/bstrings.dll -f ./exports/files/<binary> \
 
 ## Output Paths
 
+Routing follows the canonical layer model in
+`.claude/skills/dfir-discipline/DISCIPLINE.md` ("Layer model" subsection).
+EZ Tool CSV outputs live under `./exports/<artifact>/` because they are
+treated as the analytic-unit byte view of the underlying registry hive
+or EVTX corpus (the parser reformat *is* the artifact downstream
+analysis pivots on). Multi-evidence cases append the EVID per Rule L
+(e.g. `exports/evtx/parsed/Security-EV01.csv`); directory-tree exports
+(full registry batch dumps) use `exports/registry/EV01/...`.
+
 | Output | Path |
 |--------|------|
 | Event log CSVs | `./exports/evtx/parsed/` |

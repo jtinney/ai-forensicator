@@ -426,6 +426,14 @@ sudo umount /mnt/ewf
 
 ## Output Paths
 
+Routing follows the canonical layer model in
+`.claude/skills/dfir-discipline/DISCIPLINE.md` ("Layer model" subsection):
+bytes-as-analytic-unit go under `./exports/<domain>/` (layer 4, hashed by
+`audit-exports.sh`); summary CSVs / markdown / `findings.md` stay under
+`./analysis/<domain>/` (layer 3, recomputable). Multi-evidence cases
+encode the originating EVID per Rule L (e.g. `mft-EV01.csv` or
+`exports/registry/EV01/`).
+
 | Output | Path |
 |--------|------|
 | Bodyfile | `./analysis/` |

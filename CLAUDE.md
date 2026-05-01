@@ -10,7 +10,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | **Role** | Principal DFIR Orchestrator |
 | **Evidence Mode** | Strict read-only (chain of custody) |
 
-## Project layout
+## Project layout — five-layer folder model
+
+The case workspace `./cases/<CASE_ID>/` has **five layers**, each with a
+distinct mutability and integrity contract:
+
+| # | Layer | Path | Origin | Mutability | Integrity ledger | Hook |
+|---|-------|------|--------|------------|------------------|------|
+| 1 | Original evidence | `./evidence/` | Operator drop at intake | Read-only after intake | `analysis/manifest.md` | Permission deny + `chmod a-w` |
+| 2 | Bundle expansion | `./analysis/_extracted/<bundle>/` | `case-init.sh` expanding archives | Read-only by convention | `analysis/manifest.md` (`bundle-member` rows) | None — manifest-locked |
+| 3 | Tool reports | `./analysis/<domain>/` | Surveyor + investigator | Mutable (recomputable) | None — by design | audit-log hooks only |
+| 4 | Derived artifacts | `./exports/<domain>/...` | Carved bytes, exported hives, dumped memory, sliced pcaps | Write-once | `analysis/exports-manifest.md` | `audit-exports.sh` |
+| 5 | Reports | `./reports/` | Final deliverables | Mutable | None | None |
+
+**Decision rule when an agent writes a file:** is the file's *byte sequence*
+the analytic unit, or is the file a *summary* of bytes that live elsewhere?
+Bytes go to `./exports/`. Summaries (CSV, JSON, markdown) go to `./analysis/`.
+Layer 2 is the only place inside `./analysis/` where bytes legitimately live —
+they came from layer 1 at intake (manifest-tracked as bundle members) and never
+moved.
+
+Project root layout (tooling sits alongside the case workspaces):
 
 ```
 ai-forensicator/                  # project root (cloned repo)
@@ -24,11 +44,7 @@ ai-forensicator/                  # project root (cloned repo)
 ├── cases/                        # one subdirectory per case
 │   ├── case-xxxx/                #   blank template (rename / clone)
 │   │   └── evidence/             #     drop evidence here
-│   └── <CASE_ID>/                #   investigator's case workspace
-│       ├── evidence/             #     read-only after case-init
-│       ├── analysis/             #     tool output + findings
-│       ├── exports/              #     extracted artifacts (carved files etc.)
-│       └── reports/              #     final.md, stakeholder-summary.md, qa-review.md
+│   └── <CASE_ID>/                #   investigator's case workspace (5-layer model above)
 ├── VALIDATION.md                 # human-reviewer protocol for verifying case output
 └── examples/                     # worked example case (NIST CFREDS Jimmy Wilson, see examples/README.md)
 ```
@@ -116,7 +132,7 @@ and update the issue (or open a follow-up) with the new findings.
 - **No hallucinations** — Never guess, assume, or fabricate forensic artifacts, file contents, or system states.
 - **Deterministic execution** — Use court-vetted CLI tools to generate facts; ground all conclusions in raw tool output.
 - **Evidence integrity** — Never modify files in `/cases/`, `/mnt/`, `/media/`, or any `evidence/` directory.
-- **Output routing** — Write all scripts, CSVs, JSON, and reports to `./analysis/`, `./exports/`, or `./reports/`. Never write to `/` or evidence directories.
+- **Output routing** — Apply the bytes-vs-summaries decision rule (see "Project layout" above). *Bytes-as-analytic-unit* (carved files, exported hives, dumped memory regions, reassembled HTTP objects, sliced pcaps) go to `./exports/<domain>/`. *Summaries-of-bytes-elsewhere* (CSVs, JSON, markdown reports, `findings.md`, `survey-EVnn.md`) go to `./analysis/<domain>/`. Final deliverables go to `./reports/`. Never modify files in `/cases/`, `/mnt/`, `/media/`, or any `evidence/` directory.
 - **Timestamps** — Always output in UTC.
 - **Verification** — Verify tool success after every run. On failure: read stderr → hypothesize → correct → retry.
 

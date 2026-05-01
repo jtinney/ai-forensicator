@@ -78,15 +78,42 @@ dirs=(
     "./analysis/sigma/hits"
     "./analysis/_extracted"
     "./exports"
+    # Canonical exports/ taxonomy — see dfir-discipline/DISCIPLINE.md
+    # "Layer model" subsection. Pre-scaffolded so domain skills do not
+    # race against audit-exports.sh's depth-unbounded find walk on
+    # lazy-mkdir. Filename-encoding (artifact-EVID.ext) is the default
+    # for multi-evidence cases per Rule L; per-EVID subdirs are the
+    # required exception for tools that emit directory trees.
     "./exports/files"
     "./exports/carved"
     "./exports/yara_hits"
     "./exports/sigma_hits"
+    "./exports/evtx"
+    "./exports/evtx/parsed"
+    "./exports/evtx/xml"
+    "./exports/registry"
+    "./exports/shimcache"
+    "./exports/prefetch"
+    "./exports/amcache"
+    "./exports/mft"
+    "./exports/srum"
+    "./exports/shellbags"
+    "./exports/jumplists"
+    "./exports/lnk"
+    "./exports/recyclebin"
+    "./exports/browser"
+    "./exports/browser/parsed"
+    "./exports/WindowsTimeline"
+    "./exports/dumpfiles"
+    "./exports/malfind"
+    "./exports/memdump"
     "./exports/network"
+    "./exports/network/slices"
+    "./exports/network/carved"
     "./exports/network/http_objects"
     "./exports/network/tcpflow"
     "./exports/network/streams"
-    "./exports/network/carved"
+    "./exports/tsk_recover"
     "./reports"
 )
 

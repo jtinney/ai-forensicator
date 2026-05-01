@@ -437,6 +437,15 @@ file <image.img>
 
 ## Output Paths
 
+Routing follows the canonical layer model in
+`.claude/skills/dfir-discipline/DISCIPLINE.md` ("Layer model" subsection):
+Volatility CSV / TSV / TXT outputs are summary-of-bytes (layer 3) and stay
+under `./analysis/memory/`. The byte extracts (`windows.dumpfiles`,
+`windows.malfind --dump`, `windows.memmap --dump`) are layer-4 derived
+artifacts, hashed by `audit-exports.sh`. Multi-evidence cases use a
+per-EVID subdir (`./exports/dumpfiles/EV01/...`) per Rule L because
+Volatility's `--dump` emits a directory tree we don't control.
+
 | Output | Path |
 |--------|------|
 | Image header | `./analysis/memory/imageinfo.csv` |
