@@ -46,6 +46,8 @@ Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
 - `./analysis/correlation-history.md` (correlation-loop convergence record)
 - `./reports/final.md`
 - `./reports/stakeholder-summary.md`
+- `./reports/spreadsheet-of-doom.csv` (row-count cross-check, see step 4a)
+- `./reports/spreadsheet-of-doom.xlsx` (when present)
 - Domain-specific authoritative artifacts (per-domain raw outputs you
   can re-grep / re-count without re-running tools — e.g.
   `./analysis/network/suricata/eve.json`, Zeek logs, Plaso CSVs)
@@ -358,6 +360,28 @@ separation the rest of the pipeline already uses.
    Phase 4 re-dispatch row — the correlation matrix may be stale.
    **If Phase 4 will re-run** (this pass or pending from a previous
    pass), also queue Phase 5 — the reports lag the matrix.
+
+6a. **Spreadsheet of Doom row-count gate.**
+   - Confirm `./reports/spreadsheet-of-doom.csv` exists. Its absence is a
+     reporter-phase failure: surface as BLOCKED with action item
+     "re-run reporter step C" rather than generating it yourself.
+   - Count CSV data rows: `tail -n +2 ./reports/spreadsheet-of-doom.csv | wc -l`.
+   - Count `## ` headings across all `./analysis/*/findings.md`:
+     `grep -hE '^## ' ./analysis/*/findings.md | wc -l`.
+   - Count confirmed findings (proxy: confirmed-status leads in
+     `leads.md` that have a corresponding heading): for the QA gate, the
+     row-count must equal the heading count. Mismatch is one of:
+     (a) a finding is missing its `## ` heading (discipline failure in
+     the investigator output — fix in `findings.md` and re-run the
+     reporter's spreadsheet step), (b) the script regressed (fix
+     `.claude/skills/dfir-bootstrap/spreadsheet-of-doom.py`), or
+     (c) a heading is duplicated. Flag the mismatch in `qa-review.md`
+     with the count delta and the most likely cause; do not silently
+     re-write the CSV.
+   - Spot-check ≥3 rows: pick three random `Finding ID` values from
+     the CSV and confirm each resolves to a `## ` heading in some
+     `analysis/<domain>/findings.md`. Any phantom row is a discipline
+     issue worth surfacing.
 
 7. **Internal-consistency reconciliation.** For each pair (correlation
    ↔ final, final ↔ stakeholder-summary, leads ↔ correlation):

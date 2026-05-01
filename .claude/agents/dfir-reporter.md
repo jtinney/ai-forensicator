@@ -40,7 +40,7 @@ Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
 
 ## Outputs
 
-You produce **two** reports, in order:
+You produce **three** reporting artifacts, in order:
 
 **A. `./reports/final.md`** — the technical case report (defined below). This
 is the source of truth; write it first.
@@ -61,6 +61,25 @@ no sub-technique noise). Example:
 - *Defense Evasion*: obfuscated payload + cleared event logs.
 Derive the bullet list from the correlator's rollup; do NOT re-grep
 `findings.md`.
+
+**C. `./reports/spreadsheet-of-doom.csv` (always) and
+`./reports/spreadsheet-of-doom.xlsx` (when `openpyxl` is importable)** — the
+wide investigative tracking spreadsheet. One row per finding heading across
+every `analysis/<domain>/findings.md`, with cross-domain ties from
+`analysis/correlation.md` rolled into the Correlated-findings cell. Generate
+deterministically via:
+
+```bash
+python3 "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/spreadsheet-of-doom.py" .
+```
+
+Run AFTER `final.md` and `stakeholder-summary.md` are written. The script is
+read-only against analysis artifacts and stdlib-only for CSV; XLSX is a soft
+dependency. If openpyxl is absent, the script logs a warning and continues
+(the CSV is still produced) — that is NOT a phase failure. Do not invent
+fields: cells the findings on disk did not populate are emitted blank. Every
+row's Finding ID must resolve back to a `## ` heading in a `findings.md`;
+Phase 6 QA verifies the row count against confirmed findings on disk.
 
 ---
 
@@ -117,6 +136,8 @@ match remains, the report is incomplete.
 ## Return to orchestrator (≤180 words)
 - Pointer to `./reports/final.md`
 - Pointer to `./reports/stakeholder-summary.md`
+- Pointer to `./reports/spreadsheet-of-doom.csv` and (if produced) `.xlsx`,
+  with the row count printed by the script
 - Executive summary from `final.md` verbatim
 - One-line posture line from the stakeholder briefing (per-assertion
   confidence summary, NOT a global single rating)
