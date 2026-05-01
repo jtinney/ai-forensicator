@@ -42,14 +42,46 @@ Project-level scripts live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
    Tools installed from upstream source (e.g. Zeek from OpenSUSE OBS) appear as
    `MISSING` in the dpkg table while the binary is present on PATH and the domain
    is `GREEN` in `SKILL_STATUS:`. The dpkg section is informational only.
-2. `bash .claude/skills/dfir-bootstrap/case-init.sh "$CASE_ID"`
+2. **Pre-extraction disk-space planner (issue #4).** Before invoking
+   `case-init.sh`, compute the extraction schedule:
+   ```bash
+   bash .claude/skills/dfir-bootstrap/extraction-plan.sh
+   ```
+   Reads `./evidence/` depth-unbounded, sums estimated decompressed size for
+   every archive bundle, compares against free disk at
+   `./analysis/_extracted/` (with a 20% headroom budget — override via
+   `HEADROOM_PCT`), and writes `./analysis/extraction-plan.md`. The
+   tree under `./analysis/_extracted/` is **layer-2 evidence-grade
+   staging** tracked by `manifest.md`, not `./exports/` (layer-4 derived
+   artifacts) — that is why the planner sizes against the analysis
+   partition. Three plan modes:
+   - `mode: bulk` — total + headroom fits free space. Set `BULK_EXTRACT=1`
+     when invoking `case-init.sh` (next step) so its bundle-expansion loop
+     runs over every archive in one pass.
+   - `mode: sequential` — total exceeds free but every individual archive
+     fits. Run `case-init.sh` with `BULK_EXTRACT=0` (or unset) so it
+     scaffolds + hashes top-level items but does NOT bulk-extract; then
+     stage only the first archive listed in `extraction-plan.md` (smallest
+     first) and return `sequential mode active; first stage staged` to the
+     orchestrator. The orchestrator drives subsequent stages per the
+     "Sequential extraction protocol" section in `ORCHESTRATE.md`.
+   - `mode: blocked` (planner exits 1) — at least one archive's estimated
+     size + headroom exceeds free space. The planner has appended a
+     BLOCKED `L-EXTRACT-DISK-NN` lead row to `./analysis/leads.md`.
+     Return `BLOCKED: L-EXTRACT-DISK-NN` to the orchestrator with a
+     pointer to `./analysis/extraction-plan.md`; do NOT proceed to
+     extraction.
+3. `BULK_EXTRACT=<0|1> bash .claude/skills/dfir-bootstrap/case-init.sh "$CASE_ID"`
    — case-init now (a) creates the analysis/_extracted/ directory, (b)
-   walks ./evidence/, (c) sha256-hashes every file, (d) for any zip / tar /
-   tar.gz / 7z bundle, expands it under ./analysis/_extracted/<basename>/
-   and hashes every extracted member, and (e) seeds ./analysis/manifest.md
-   with one row per top-level item AND one row per bundle member. You do
-   NOT need to re-hash bundle members — verify the manifest instead.
-3. For each evidence item, classify:
+   walks ./evidence/, (c) sha256-hashes every file, (d) **when `BULK_EXTRACT=1`**,
+   for any zip / tar / tar.gz / 7z bundle, expands it under
+   `./analysis/_extracted/<basename>/` and hashes every extracted member,
+   and (e) seeds `./analysis/manifest.md` with one row per top-level item
+   AND one row per bundle member. When `BULK_EXTRACT=0` (the default in
+   sequential mode), case-init scaffolds and hashes but skips bundle
+   expansion — the orchestrator stages archives one at a time. You do NOT
+   need to re-hash bundle members — verify the manifest instead.
+4. For each evidence item, classify:
    - **disk** — `.E01`, `.dd`, `.raw` matching partition layout (verify with `ewfinfo` or `mmls`)
    - **memory** — `.mem`, `.raw`, `.vmem`, `.dmp` (verify: `file` reports no MBR/GPT; size matches RAM)
    - **logs** — `.evtx`, `.log`, `.json`, archive of exported logs (non-network)
@@ -57,7 +89,10 @@ Project-level scripts live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
    - **pcap** — `.pcap`, `.pcapng`, `.cap` (verify with `file` → "tcpdump capture" or pcapng magic; or run `capinfos`)
    - **netlog** — Zeek log directory (presence of `conn.log`/`dns.log`/`http.log` with `#fields` header), Suricata `eve.json`, NetFlow `*.nfcapd` / `nfdump` exports
    - **other** — mail stores, mobile images, container snapshots (note but do not deep-classify)
-4. Verify the manifest case-init produced:
+5. Verify the manifest case-init produced (in bulk mode this covers every
+   archive; in sequential mode only the first stage's archive is expanded
+   on this invocation, and subsequent stages are surfaced + verified by the
+   orchestrator after each `extraction-cleanup.sh`):
    - For each `bundle:*` row, confirm
      `find ./analysis/_extracted/<basename>/ -type f | wc -l` matches the
      count of `bundle-member` rows whose `parent` field is the bundle's
@@ -67,14 +102,16 @@ Project-level scripts live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
      in the `notes` field (e.g. `pcap`, `logs`) so surveyors know which
      domain to fan out into.
    - Record an `audit.sh` line `manifest-verified: N items, M members`.
-5. If any non-bundle evidence remains unhashed (case-init missed it),
+6. If any non-bundle evidence remains unhashed (case-init missed it),
    hash it and append `EVNN` rows to `./analysis/manifest.md` directly.
-6. Initialize `./analysis/leads.md` if it does not exist:
+7. Initialize `./analysis/leads.md` if it does not exist:
    ```
    | lead_id | evidence_id | domain | hypothesis | pointer | priority | status |
    |---------|-------------|--------|------------|---------|----------|--------|
    ```
-7. **Intake gate (DISCIPLINE rule J).** Run
+   (If `extraction-plan.sh` returned `mode: blocked`, the planner has
+   already created `leads.md` and appended an `L-EXTRACT-DISK-NN` row.)
+8. **Intake gate (DISCIPLINE rule J).** Run
    `bash .claude/skills/dfir-bootstrap/intake-check.sh`. If it reports
    blank fields, run `bash .claude/skills/dfir-bootstrap/intake-interview.sh`.
    - In TTY mode the script prompts the operator directly.
@@ -83,11 +120,19 @@ Project-level scripts live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
      blocker** (`INTAKE-PENDING`) and stop — the orchestrator must
      get the operator's chain-of-custody answers before any further
      phase runs. Do NOT invent values; do NOT proceed.
-8. Append to `./analysis/forensic_audit.log` via `audit.sh`. Your first
-   entry MUST include `discipline_v1_loaded` in the result field.
+9. Append to `./analysis/forensic_audit.log` via `audit.sh`. Your first
+   entry MUST include `discipline_v1_loaded` in the result field. If
+   `extraction-plan.sh` returned `sequential` or `blocked`, also include
+   the plan-mode in the result field of a follow-up audit row keyed
+   `extraction-plan` (the planner already wrote its own
+   `extraction-plan computed` row; the follow-up signals that triage
+   acknowledged it).
 
 ## Output (return to orchestrator, ≤200 words)
 - Case ID, preflight summary (SKILL_STATUS RED domains only — list each by label; do NOT cite dpkg MISSING rows as blocked), evidence count by type
+- **Extraction plan mode** (`bulk` / `sequential` / `blocked`) and pointer
+  `./analysis/extraction-plan.md`. On `sequential` also report which archive
+  was staged first; on `blocked` cite the `L-EXTRACT-DISK-NN` lead id.
 - Pointer: `./analysis/manifest.md`
 - Any items that could not be classified and why
 
