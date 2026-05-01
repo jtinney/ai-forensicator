@@ -224,6 +224,66 @@ append_manifest_row() {
         >> "$MANIFEST"
 }
 
+# Helper: ensure ./analysis/leads.md exists with the canonical 8-column header.
+# leads.md is normally created by dfir-triage step 7, but case-init.sh runs
+# BEFORE triage and may need to record BLOCKED leads (L-EVIDENCE-EMPTY-NN,
+# L-EXTRACT-DISK-NN, L-EXTRACT-FAIL-NN) when bundle expansion fails. Header
+# shape mirrors extraction-plan.sh and dfir-triage.md so leads-check.sh
+# parses it cleanly.
+LEADS="./analysis/leads.md"
+ensure_leads_md() {
+    if [[ ! -f "$LEADS" ]]; then
+        mkdir -p ./analysis
+        cat > "$LEADS" <<'EOF'
+| lead_id | evidence_id | domain | hypothesis | pointer | priority | status | notes |
+|---------|-------------|--------|------------|---------|----------|--------|-------|
+EOF
+    fi
+}
+
+# Helper: pick the next L-<PREFIX>-NN id given a numeric prefix.
+# Reuses the pattern extraction-plan.sh uses for L-EXTRACT-DISK-NN: walk
+# leads.md, find the highest existing N for this prefix, return N+1
+# zero-padded to 2 digits. Idempotent — re-running with the same hypothesis
+# string is de-duped by the caller via grep -F before append.
+next_lead_id() {
+    local prefix="$1"
+    local last_n
+    last_n="$(grep -oE "\\| ${prefix}-[0-9]+" "$LEADS" 2>/dev/null \
+              | grep -oE '[0-9]+$' | sort -n | tail -1)"
+    if [[ -z "$last_n" ]]; then
+        printf '%s-01' "$prefix"
+    else
+        printf '%s-%02d' "$prefix" $((10#$last_n + 1))
+    fi
+}
+
+# Helper: append a BLOCKED lead row, idempotent on hypothesis match.
+# Echoes the lead id of the row (newly written or pre-existing) so callers
+# can include it in their stderr message and audit row.
+append_blocked_lead() {
+    local prefix="$1" ev_id="$2" hypothesis="$3" pointer="$4" notes="$5"
+    ensure_leads_md
+    # Escape pipes in user-derived fields so the table parses cleanly
+    local hyp_safe="${hypothesis//|/\\|}"
+    local notes_safe="${notes//|/\\|}"
+    if grep -qF "$hyp_safe" "$LEADS" 2>/dev/null; then
+        # Already recorded — surface the existing lead id rather than
+        # double-appending. Pull the first L-<PREFIX>-NN id from the row
+        # whose hypothesis matches.
+        local existing
+        existing="$(grep -F "$hyp_safe" "$LEADS" 2>/dev/null \
+                    | grep -oE "\\| ${prefix}-[0-9]+" | head -1 | tr -d '| ')"
+        echo "${existing:-${prefix}-??}"
+        return 0
+    fi
+    local lead_id
+    lead_id="$(next_lead_id "$prefix")"
+    printf '| %s | %s | bootstrap | %s | %s | high | blocked | %s |\n' \
+        "$lead_id" "$ev_id" "$hyp_safe" "$pointer" "$notes_safe" >> "$LEADS"
+    echo "$lead_id"
+}
+
 # Determine next EV slot from existing manifest rows
 next_ev_id() {
     local last
@@ -254,16 +314,49 @@ if [[ -d "$EVIDENCE_DIR" ]]; then
         "chmod u+w only with documented chain-of-custody justification" >/dev/null 2>&1 || true
     echo "[case-init] $EVIDENCE_DIR locked read-only (a-w)"
 
-    # Use a NUL-delimited, depth-1 sweep of evidence/. Skip dotfiles.
-    while IFS= read -r -d '' f; do
-        [[ -d "$f" ]] && continue
+    # Use a NUL-delimited, DEPTH-UNBOUNDED sweep of evidence/. Issue #12
+    # root cause: the prior `-maxdepth 1` only saw immediate children of
+    # evidence/, so `evidence/Archives/*.zip` (case12 layout) was silently
+    # skipped — the loop iterated over the directory entry, [[ -f ]] failed,
+    # and case-init exited with an empty manifest. Walk every regular file
+    # at any depth; ignore directories. Sort the listing so re-runs produce
+    # deterministic EV-id assignments (matching extraction-plan.sh).
+    # grep -c exits non-zero when no matches, so wrap with `|| true` and
+    # default the empty string to 0 — chaining `|| echo 0` would emit
+    # "0\n0" (grep's own zero count + the fallback) which then breaks the
+    # numeric -eq comparison below.
+    EVID_ROWS_BEFORE=$(grep -cE '^\| EV[0-9]{2,}' "$MANIFEST" 2>/dev/null || true)
+    EVID_ROWS_BEFORE="${EVID_ROWS_BEFORE:-0}"
+    rows_appended_this_run=0
+    walk_count=0
+
+    # Track the path strings already-manifested so the idempotency check
+    # below can match against either the absolute form or the
+    # relative-from-evidence form. The pre-#12 rows used the absolute form
+    # (./evidence/foo.zip); the new rows use the relative form
+    # (Archives/foo.zip). Both must be honored to avoid double-listing.
+
+    mapfile -d '' all_evidence_files < <(find "$EVIDENCE_DIR" -mindepth 1 -type f -print0 2>/dev/null \
+                                          | LC_ALL=C sort -z)
+
+    for f in "${all_evidence_files[@]}"; do
+        [[ -f "$f" ]] || continue
+        walk_count=$((walk_count + 1))
+
         bn="$(basename "$f")"
         [[ "${bn:0:1}" == "." ]] && continue
 
-        # Skip if already manifested (idempotent re-run)
-        # Match the path field exactly so two evidence items with identical
-        # basenames in different dirs are kept distinct.
-        if grep -qF "| ${f} | " "$MANIFEST" 2>/dev/null; then
+        # Relative-from-evidence/ form for traceability across deep layouts.
+        # e.g. ./evidence/Archives/sample.zip -> Archives/sample.zip.
+        rel_path="${f#"${EVIDENCE_DIR}"/}"
+        rel_path="${rel_path#./}"
+
+        # Skip if already manifested (idempotent re-run). Match against
+        # either the relative form (new) or the absolute-with-dot form (old)
+        # so a re-run after the depth-walk fix doesn't duplicate rows from
+        # cases scaffolded under the old layout.
+        if grep -qF "| ${rel_path} |" "$MANIFEST" 2>/dev/null \
+           || grep -qF "| ${f} |" "$MANIFEST" 2>/dev/null; then
             continue
         fi
 
@@ -278,7 +371,8 @@ if [[ -d "$EVIDENCE_DIR" ]]; then
             *"7-zip archive"*)            kind="7z" ;;
             *"gzip compressed"*)
                 # only auto-extract gz wrapping a tar
-                if file -b "$f" 2>/dev/null | grep -q 'tar archive'; then
+                if file -b "$f" 2>/dev/null | grep -q 'tar archive' \
+                   || tar -tzf "$f" >/dev/null 2>&1; then
                     kind="gzip-tar"
                 fi ;;
             *"POSIX tar"*|*"tar archive"*) kind="tar" ;;
@@ -287,9 +381,9 @@ if [[ -d "$EVIDENCE_DIR" ]]; then
         ev_id=$(next_ev_id)
 
         if [[ -n "$kind" ]]; then
-            # Expand bundle if dest dir is empty (idempotent)
+            # Expansion dest. Strip the (possibly secondary) extension for
+            # .tar.gz / .tar.bz2 so the dest dir name is human-readable.
             dest_subdir="${bn%.*}"
-            # Strip secondary extension for `.tar.gz`/`.tar.bz2`
             [[ "$dest_subdir" == *.tar ]] && dest_subdir="${dest_subdir%.tar}"
             dest="${EXTRACT_DIR}/${dest_subdir}"
             mkdir -p "$dest"
@@ -299,44 +393,148 @@ if [[ -d "$EVIDENCE_DIR" ]]; then
             # bundle's intake hash + a deferred bundle row, but DO NOT expand
             # or hash members. The orchestrator stages archives one at a time.
             if [[ "$BULK_EXTRACT" == "0" ]]; then
-                append_manifest_row "$ev_id" "$bn" "$f" "bundle:${kind}" "$size" "$sha" "-" "expansion deferred (sequential mode per extraction-plan.md)"
+                append_manifest_row "$ev_id" "$bn" "$rel_path" "bundle:${kind}" "$size" "$sha" "-" "expansion deferred (sequential mode per extraction-plan.md)"
+                rows_appended_this_run=$((rows_appended_this_run + 1))
                 bash "$AUDIT_SH" "case-init bundle-deferred" \
                     "BULK_EXTRACT=0; recorded $ev_id ($bn) intake hash without expansion" \
                     "orchestrator stages archive per extraction-plan.md" >/dev/null 2>&1 || true
                 continue
             fi
 
-            if [[ -z "$(ls -A "$dest" 2>/dev/null)" ]]; then
-                # Disk safety: skip if expanded size > 50% of free disk
+            # Idempotency tightening (issue #12): if the dest dir already
+            # contains files, cross-check the on-disk member count against
+            # the bundle-member rows already in manifest.md for this ev_id.
+            # Mismatch (partial extraction from a prior failed run) =
+            # poisoned dest — refuse to re-use it and halt with an
+            # actionable message. Operator clears the dir and re-runs.
+            if [[ -n "$(ls -A "$dest" 2>/dev/null)" ]]; then
+                disk_member_count=$(find "$dest" -type f 2>/dev/null | wc -l)
+                # Resolve which ev_id (if any) already owns this dest by
+                # matching the absolute dest path in the manifest's notes
+                # column on prior bundle rows. If no prior bundle row
+                # references this dest, then bytes are present without a
+                # custodial trail — refuse.
+                prior_ev=$(grep -F "| bundle:" "$MANIFEST" 2>/dev/null \
+                           | grep -F "${dest}" \
+                           | grep -oE '^\| EV[0-9]+' | head -1 | tr -d '| ')
+                manifest_member_count=0
+                if [[ -n "$prior_ev" ]]; then
+                    manifest_member_count=$(grep -cE "^\| ${prior_ev}-M[0-9]+ \| " "$MANIFEST" 2>/dev/null || echo 0)
+                fi
+                if [[ "$disk_member_count" -ne "$manifest_member_count" ]] \
+                   || [[ -z "$prior_ev" ]]; then
+                    bash "$AUDIT_SH" "case-init bundle-poisoned" \
+                        "$dest_subdir: on-disk members=${disk_member_count} but manifest bundle-member rows=${manifest_member_count} for prior_ev='${prior_ev:-none}'" \
+                        "operator: rm -rf $dest then re-run case-init" >/dev/null 2>&1 || true
+                    lid=$(append_blocked_lead "L-EXTRACT-POISON" "$ev_id" \
+                        "Partial-expansion poison at ${dest}: on-disk member count (${disk_member_count}) does not match manifest rows (${manifest_member_count})" \
+                        "analysis/manifest.md" \
+                        "operator: rm -rf ${dest} and re-run case-init.sh; preserve prior manifest rows for forensic record")
+                    echo "[case-init] HALT — bundle ${dest_subdir} is poisoned (partial prior extraction)" >&2
+                    echo "[case-init]   on-disk members=${disk_member_count}, manifest rows=${manifest_member_count}" >&2
+                    echo "[case-init]   logged BLOCKED lead ${lid}; clear ${dest} and re-run" >&2
+                    exit 1
+                fi
+                echo "[case-init] $bn already expanded at $dest (idempotent skip; ${disk_member_count} members)"
+            else
+                # Disk safety guard. The combined-corpus case is owned by
+                # extraction-plan.sh (which writes BLOCKED leads at plan
+                # time when the largest-archive doesn't fit). This per-
+                # archive 50%-of-free check is the LAST-resort guard for
+                # callers that bypassed the planner (legacy direct
+                # `case-init.sh` invocations). When BULK_EXTRACT=1 (the
+                # default) AND the estimate exceeds 50% of free disk,
+                # halt — silent-skip with `sha256 = -` is the case12
+                # silent-skip foot-gun this rewrite eliminates.
                 avail_kb=$(df --output=avail "$dest" 2>/dev/null | tail -1)
                 avail_b=$(( avail_kb * 1024 ))
                 est_b=$(estimate_expanded_size "$f" "$kind")
-                if [[ "$est_b" -gt 0 && "$avail_b" -gt 0 && "$est_b" -gt $(( avail_b / 2 )) ]]; then
-                    bash "$AUDIT_SH" "case-init bundle-skip" \
-                        "skip $bn — estimated $(hsize "$est_b") > 50% of $(hsize "$avail_b") free" \
-                        "free disk or expand manually outside the case dir" >/dev/null 2>&1 || true
-                    append_manifest_row "$ev_id" "$bn" "$f" "bundle:${kind}" "$size" "$sha" "-" "skipped expansion (est $(hsize "$est_b") > 50% free)"
-                    continue
+                # Test knob: CASE_INIT_FORCE_DISK_PRESSURE=1 forces the
+                # disk-pressure halt path regardless of actual free space.
+                # Used by the issue #12 regression suite under /tmp/. Has
+                # no effect when BULK_EXTRACT=0 (sequential mode bypasses
+                # the per-archive halt — extraction-plan.sh owns the
+                # combined-corpus disk check).
+                force_dp="${CASE_INIT_FORCE_DISK_PRESSURE:-0}"
+                triggered_dp=0
+                if [[ "$BULK_EXTRACT" != "0" \
+                      && "$force_dp" == "1" ]]; then
+                    triggered_dp=1
+                elif [[ "$BULK_EXTRACT" != "0" \
+                      && "$est_b" -gt 0 \
+                      && "$avail_b" -gt 0 \
+                      && "$est_b" -gt $(( avail_b / 2 )) ]]; then
+                    triggered_dp=1
+                fi
+                if [[ "$triggered_dp" -eq 1 ]]; then
+                    deficit=$(( est_b - (avail_b / 2) ))
+                    hyp="Disk-pressure halt: ${rel_path} estimated $(hsize "$est_b") exceeds 50% of free $(hsize "$avail_b")"
+                    notes="required-free-space-delta=$(hsize "$deficit") (${deficit} bytes); free disk and re-run, OR run extraction-plan.sh + invoke case-init.sh with BULK_EXTRACT=0 for sequential mode"
+                    lid=$(append_blocked_lead "L-EXTRACT-DISK" "$ev_id" "$hyp" \
+                        "analysis/manifest.md" "$notes")
+                    bash "$AUDIT_SH" "case-init bundle-blocked" \
+                        "halt $bn — estimated $(hsize "$est_b") > 50% of $(hsize "$avail_b") free; lead=${lid}" \
+                        "free disk and re-run, OR run extraction-plan.sh for sequential mode" >/dev/null 2>&1 || true
+                    echo "[case-init] HALT — disk pressure on $bn" >&2
+                    echo "[case-init]   estimated expand=$(hsize "$est_b"), free=$(hsize "$avail_b"), 50% threshold=$(hsize "$(( avail_b / 2 ))")" >&2
+                    echo "[case-init]   logged BLOCKED lead ${lid}; resolution paths in $LEADS" >&2
+                    exit 1
                 fi
 
-                # Expand
+                # Expand. Capture stderr so a halt records the failing
+                # tool's actual error message rather than a generic
+                # "WARN: tar failed" (issue #12 acceptance).
+                extract_err=""
                 case "$kind" in
-                    zip)        unzip -q "$f" -d "$dest" 2>/dev/null \
-                                    || { echo "[case-init] WARN: unzip failed for $f"; continue; } ;;
-                    gzip-tar)   tar -xzf "$f" -C "$dest" 2>/dev/null \
-                                    || { echo "[case-init] WARN: tar -xz failed for $f"; continue; } ;;
-                    tar)        tar -xf  "$f" -C "$dest" 2>/dev/null \
-                                    || { echo "[case-init] WARN: tar failed for $f"; continue; } ;;
-                    7z)         7z x -y -bb0 -bd -o"$dest" "$f" >/dev/null 2>&1 \
-                                    || { echo "[case-init] WARN: 7z failed for $f (need p7zip-full?)"; continue; } ;;
+                    zip)
+                        if ! extract_err=$(unzip -q "$f" -d "$dest" 2>&1 >/dev/null); then
+                            tool="unzip"
+                        else
+                            tool=""
+                        fi ;;
+                    gzip-tar)
+                        if ! extract_err=$(tar -xzf "$f" -C "$dest" 2>&1 >/dev/null); then
+                            tool="tar -xzf"
+                        else
+                            tool=""
+                        fi ;;
+                    tar)
+                        if ! extract_err=$(tar -xf "$f" -C "$dest" 2>&1 >/dev/null); then
+                            tool="tar -xf"
+                        else
+                            tool=""
+                        fi ;;
+                    7z)
+                        if ! extract_err=$(7z x -y -bb0 -bd -o"$dest" "$f" 2>&1 >/dev/null); then
+                            tool="7z x"
+                        else
+                            tool=""
+                        fi ;;
                 esac
+                if [[ -n "$tool" ]]; then
+                    # Trim the captured stderr to a single line for the
+                    # leads.md notes column. Full stderr is preserved in
+                    # the audit log row.
+                    err_oneline="$(printf '%s' "$extract_err" | tr '\n' ' ' | sed -e 's/  */ /g' -e 's/^ //' -e 's/ $//')"
+                    err_short="${err_oneline:0:240}"
+                    hyp="Extraction failure on ${rel_path}: ${tool} returned non-zero"
+                    notes="stderr=${err_short}; operator: investigate archive integrity (was sha256=${sha}); rm -rf ${dest} before retrying"
+                    lid=$(append_blocked_lead "L-EXTRACT-FAIL" "$ev_id" "$hyp" \
+                        "analysis/manifest.md" "$notes")
+                    bash "$AUDIT_SH" "case-init bundle-error" \
+                        "$tool failed for $rel_path: $err_oneline" \
+                        "investigate archive corruption; lead=${lid}" >/dev/null 2>&1 || true
+                    echo "[case-init] HALT — extraction failed for $rel_path ($tool)" >&2
+                    echo "[case-init]   stderr: $err_oneline" >&2
+                    echo "[case-init]   logged BLOCKED lead ${lid}" >&2
+                    exit 1
+                fi
                 echo "[case-init] expanded $bn -> $dest"
-            else
-                echo "[case-init] $bn already expanded at $dest (idempotent skip)"
             fi
 
             # Manifest the bundle itself
-            append_manifest_row "$ev_id" "$bn" "$f" "bundle:${kind}" "$size" "$sha" "-" "expanded to $dest"
+            append_manifest_row "$ev_id" "$bn" "$rel_path" "bundle:${kind}" "$size" "$sha" "-" "expanded to $dest"
+            rows_appended_this_run=$((rows_appended_this_run + 1))
 
             # Manifest each member (depth-unbounded; bundle members analytic units)
             mi=0
@@ -348,6 +546,7 @@ if [[ -d "$EVIDENCE_DIR" ]]; then
                 m_sha=$(sha256sum "$m" 2>/dev/null | awk '{print $1}')
                 m_bn="$(basename "$m")"
                 append_manifest_row "$m_id" "$m_bn" "$m" "bundle-member" "$m_size" "$m_sha" "$ev_id" ""
+                rows_appended_this_run=$((rows_appended_this_run + 1))
             done < <(find "$dest" -type f -print0 2>/dev/null)
 
             bash "$AUDIT_SH" "case-init bundle-expand" \
@@ -355,14 +554,33 @@ if [[ -d "$EVIDENCE_DIR" ]]; then
                 "surveyor reads manifest.md for bundle-member rows" >/dev/null 2>&1 || true
         else
             # Plain blob — just hash and manifest
-            append_manifest_row "$ev_id" "$bn" "$f" "blob" "$size" "$sha" "-" "$ftype_raw"
+            append_manifest_row "$ev_id" "$bn" "$rel_path" "blob" "$size" "$sha" "-" "$ftype_raw"
+            rows_appended_this_run=$((rows_appended_this_run + 1))
             bash "$AUDIT_SH" "case-init blob-hash" \
                 "hashed $ev_id ($bn) sha256=${sha}" \
                 "surveyor classifies and proceeds per dfir-triage protocol" >/dev/null 2>&1 || true
         fi
-    done < <(find "$EVIDENCE_DIR" -maxdepth 1 -mindepth 1 -print0 2>/dev/null)
+    done
 
-    echo "[case-init] evidence manifest updated -> $MANIFEST"
+    # Empty-walk hard fail (issue #12). If walk_count is 0 (no regular
+    # files at any depth under evidence/) AND no manifest rows exist for
+    # this case yet, treat as misconfigured: write L-EVIDENCE-EMPTY-NN
+    # BLOCKED lead and exit 1. Re-runs after a manifest already has
+    # EV rows (idempotent skip for every file) do NOT trigger this —
+    # walk_count > 0 even when no rows are appended this run.
+    if [[ "$walk_count" -eq 0 && "$EVID_ROWS_BEFORE" -eq 0 ]]; then
+        hyp="Evidence directory is empty: no regular files under ${EVIDENCE_DIR} at any depth"
+        notes="operator: drop evidence into ${EVIDENCE_DIR} (any depth) and re-run case-init.sh; an empty evidence dir is a misconfigured case, not a successful no-op"
+        lid=$(append_blocked_lead "L-EVIDENCE-EMPTY" "-" "$hyp" "analysis/manifest.md" "$notes")
+        bash "$AUDIT_SH" "case-init evidence-empty" \
+            "0 regular files under $EVIDENCE_DIR (depth-unbounded walk)" \
+            "operator drops evidence and re-runs case-init.sh; lead=${lid}" >/dev/null 2>&1 || true
+        echo "[case-init] HALT — no evidence found under $EVIDENCE_DIR" >&2
+        echo "[case-init]   logged BLOCKED lead ${lid}" >&2
+        exit 1
+    fi
+
+    echo "[case-init] evidence manifest updated -> $MANIFEST (walk=${walk_count}, rows_appended=${rows_appended_this_run})"
 fi
 
 # ---------- 00_intake.md ----------

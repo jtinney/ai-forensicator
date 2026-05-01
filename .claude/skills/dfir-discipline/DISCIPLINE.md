@@ -504,6 +504,18 @@ itself emits a tree we don't control.
   does not mechanically reject collision-prone names — the QA pass
   greps `./exports/` for un-suffixed artifacts when `manifest.md`
   records ≥2 evidence items and Edit-fixes the offending paths.
+- **Manifest completeness (issue #12)** is gate-enforced by
+  `manifest-check.sh`. The script runs in three places: (1) the
+  `/case` slash-command after `case-init.sh`, refusing to dispatch
+  agents when the manifest is broken; (2) the PreToolUse Bash hook,
+  refusing reads against `./evidence/` or `./analysis/_extracted/`
+  when the manifest is broken; (3) the QA phase, which surfaces any
+  remaining violations into `qa-review.md`. Bespoke hash files
+  outside the canonical ledger (`analysis/archive_hashes.txt` and
+  similar — case12's workaround pattern) trigger an
+  `L-MANIFEST-BESPOKE-NN` BLOCKED lead requiring operator review;
+  the file may carry forensic work that needs migration into
+  `manifest.md`, not deletion.
 - When in doubt about whether a borderline item is in scope (G) or
   whether the surface is exhausted (H), prefer the more conservative
   (in-scope / not-exhausted) choice. The cost of an extra lead is one

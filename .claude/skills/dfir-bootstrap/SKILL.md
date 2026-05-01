@@ -24,14 +24,32 @@ It does nine things:
    only missing components when run without `--check`. `suricata-update` is now a
    hard fail rather than warn-and-continue if the ET Open sync fails.
 3. **Case-init** — creates the full `./analysis/`, `./exports/`, `./reports/`
-   scaffold AND walks `./evidence/`, sha256-hashes every file, expands any zip /
-   tar / tar.gz / 7z bundle to `./analysis/_extracted/<basename>/`, hashes every
-   extracted member, and seeds `./analysis/manifest.md` with `bundle:*` and
-   `bundle-member` rows so analytic units (the contents inside a bundle) are
-   tracked individually rather than only at the bundle level. **Locks
-   `./evidence/` read-only at the filesystem level** (`chmod -R a-w` on every
-   file plus `chmod a-w` on the dir itself) so a stray `>` redirect, `mv`, or
-   `tee` cannot mutate evidence even if the harness hook is bypassed.
+   scaffold AND walks `./evidence/` **depth-unbounded**, sha256-hashes every
+   file, expands any zip / tar / tar.gz / 7z bundle to
+   `./analysis/_extracted/<basename>/`, hashes every extracted member, and
+   seeds `./analysis/manifest.md` with `bundle:*` and `bundle-member` rows so
+   analytic units (the contents inside a bundle) are tracked individually
+   rather than only at the bundle level. **Locks `./evidence/` read-only at
+   the filesystem level** (`chmod -R a-w` on every file plus `chmod a-w` on
+   the dir itself) so a stray `>` redirect, `mv`, or `tee` cannot mutate
+   evidence even if the harness hook is bypassed. **Halt-on-failure
+   contract (issue #12):** an empty `evidence/` dir, a disk-pressure
+   condition, an extraction error, or a poisoned partial-expansion all
+   exit nonzero with a `BLOCKED` lead row written to `analysis/leads.md`
+   (`L-EVIDENCE-EMPTY-NN`, `L-EXTRACT-DISK-NN`, `L-EXTRACT-FAIL-NN`,
+   `L-EXTRACT-POISON-NN`). The case12 silent-skip class of bugs (12
+   archives at depth-2 silently producing an empty manifest) is gone. After
+   case-init, **`manifest-check.sh`** verifies the ledger against the on-disk
+   evidence + extraction trees and refuses to PASS when (a) any file under
+   `evidence/` lacks a manifest row, (b) any archive's `bundle-member` count
+   does not match `find analysis/_extracted/<basename>/ -type f | wc -l`,
+   (c) any row carries `sha256 = -` without an `operator-acknowledged`
+   lead in `leads.md`, or (d) a bespoke hash file lives outside the
+   canonical ledger (the case12 `analysis/archive_hashes.txt` workaround
+   pattern). The `/case` slash-command runs `manifest-check.sh` as a
+   pre-dispatch gate; the PreToolUse hook also calls
+   `manifest-check.sh --quiet` before allowing reads against `./evidence/`
+   or `./analysis/_extracted/`.
 4. **Intake interview** — `intake-check.sh` returns nonzero if any
    chain-of-custody field in `reports/00_intake.md` is blank;
    `intake-interview.sh` prompts the operator (TTY) or accepts

@@ -83,4 +83,68 @@ EOF
     exit 2
 fi
 
+# ---- manifest gate (issue #12) ----
+# When the proposed Bash command's argv references ./evidence/ or
+# ./analysis/_extracted/, run manifest-check.sh --quiet. If the manifest
+# is broken (missing rows, bespoke hash files, partial expansion, etc.)
+# refuse the command — agents must not read evidence on top of an
+# untrustworthy ledger.
+#
+# Scoped tightly so unrelated Bash calls are not slowed by the check.
+# A pass on a well-formed case is < 200 ms; the python json-parse + os.walk
+# fast-path is intentional. The /case slash command also runs manifest-check
+# directly (belt-and-suspenders); this hook catches agents that bypass /case.
+#
+# Allow the manifest-check itself, the audit framework, and case-init.sh
+# (which builds the manifest) through unconditionally — otherwise the check
+# becomes a chicken-and-egg: case-init.sh creates rows but cannot read
+# evidence to do so.
+if printf '%s' "$cmd" | grep -qE '(manifest-check\.sh|case-init\.sh|extraction-plan\.sh|extraction-cleanup\.sh|preflight\.sh|intake-check\.sh|intake-interview\.sh|leads-check\.sh|baseline-check\.sh|mitre-validate\.sh|lint-survey\.sh|spreadsheet-of-doom)'; then
+    exit 0
+fi
+
+# Match argv tokens that reference the two protected directories. Pin to
+# ./evidence/ or evidence/ and ./analysis/_extracted/ or analysis/_extracted/
+# (with optional leading dot-slash). The pattern is deliberately narrow so
+# benign mentions in stdin / quoted strings don't trigger the check.
+TARGET_RE='(^|[[:space:]=])(\.?\/)?(evidence|analysis\/_extracted)\/'
+if printf '%s' "$cmd" | grep -qE "$TARGET_RE"; then
+    SCRIPT_DIR_HOOK="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+    MANIFEST_CHECK="${SCRIPT_DIR_HOOK}/manifest-check.sh"
+    if [[ -x "$MANIFEST_CHECK" && -d ./analysis ]]; then
+        # Run from the case workspace (CWD when the hook fires). Suppress
+        # stdout, capture stderr only on failure so the deny message is
+        # actionable. Use --quiet for fast-path.
+        rc=0
+        check_stderr="$(bash "$MANIFEST_CHECK" --quiet 2>&1 >/dev/null)" || rc=$?
+        if [[ "$rc" -eq 1 ]]; then
+            cat >&2 <<EOF
+PreToolUse DENY: manifest integrity check failed.
+
+The proposed command references ./evidence/ or ./analysis/_extracted/, but
+analysis/manifest.md is incomplete (missing rows, partial bundle expansion,
+or a bespoke hash file lives outside the canonical ledger).
+
+Run for full details:
+  bash .claude/skills/dfir-bootstrap/manifest-check.sh
+
+Quick summary from --quiet:
+$(printf '%s\n' "$check_stderr" | sed 's/^/  /')
+
+Resolution paths:
+  - case-init.sh-side issues (missing manifest rows, partial expansion):
+      operator clears analysis/_extracted/<basename>/ then re-runs
+      bash .claude/skills/dfir-bootstrap/case-init.sh <CASE_ID>
+  - bespoke hash file: reconcile its rows into manifest.md, then remove
+    the bespoke file (do NOT blindly delete — it may carry real work).
+
+See: GitHub issue #12 (case-init determinism + manifest-check gate)
+EOF
+            exit 2
+        fi
+        # rc 0 (PASS) or rc 2 (preconditions wrong, e.g. fresh case
+        # without analysis/) — allow.
+    fi
+fi
+
 exit 0
