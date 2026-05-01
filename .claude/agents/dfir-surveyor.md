@@ -65,6 +65,16 @@ them verbatim for output paths; load the matching skill by path.
    question" table instead.
 3. Run ONLY cheap-signal passes. No full-image Plaso, no full memmap dump, no
    recursive YARA on the whole image. Budget: ~15 min wall time.
+3a. **Hash-before-read.** Before opening any evidence file, bundle member, or
+   `./exports/` artifact, run `bash $CLAUDE_PROJECT_DIR/.claude/skills/dfir-bootstrap/survey-hash-on-read.sh <DOMAIN> <FILE_PATH>`.
+   If non-zero exit, STOP and report the mismatch — do not silently re-hash.
+   Applies to every file you `cat`, `head`, `Read`, parse with a domain tool,
+   or feed to a parser. Does NOT apply to files Plaso/Volatility/Zeek read
+   transitively from inside their own tool wrappers (once-per-survey-touch,
+   on the file the surveyor *explicitly* opens). The script writes
+   `./analysis/<DOMAIN>/files-examined.tsv` (path / sha256 / size / mtime /
+   examined-at), idempotent on (path, sha) match, and refuses with exit 2 +
+   audit-log MISMATCH row when a previously-recorded file's sha changes.
 4. Write tool output under the domain subdir (survey CSVs, parsed JSON).
 5. Instantiate the template at `./analysis/<DOMAIN>/survey-<EVIDENCE_ID>.md`.
    The six required sections (in order) are: `# Header`, `## Tools run`,
