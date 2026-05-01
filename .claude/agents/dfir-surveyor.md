@@ -44,6 +44,20 @@ them verbatim for output paths; load the matching skill by path.
 ## Protocol
 
 1. Read the skill file for your `DOMAIN` (from the map above).
+1.1. **Read the survey template skeleton** at
+   `${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-discipline/templates/survey-template.md`.
+   This is the canonical layout your `survey-<EVIDENCE_ID>.md` MUST follow.
+   Read your domain's worked example as a reference:
+   `${CLAUDE_PROJECT_DIR}/.claude/skills/<skill-dir>/reference/example-survey.md`
+   (e.g. `windows-artifacts/reference/example-survey.md`,
+   `network-forensics/reference/example-survey.md`,
+   `memory-analysis/reference/example-survey.md`,
+   `plaso-timeline/reference/example-survey.md`,
+   `sleuthkit/reference/example-survey.md`,
+   `yara-hunting/reference/example-survey.md`,
+   `sigma-hunting/reference/example-survey.md`).
+   If the template file is missing, STOP and surface
+   `TEMPLATE-MISSING` to the orchestrator — do not free-form a layout.
 2. Read `.claude/skills/TRIAGE.md` § `Phase 1 — Triage (cheap, high-signal)`
    (lines 49–77). That section lists the concrete cheap passes per domain —
    use it as your menu when the case is `unguided`. When the case has a
@@ -52,10 +66,26 @@ them verbatim for output paths; load the matching skill by path.
 3. Run ONLY cheap-signal passes. No full-image Plaso, no full memmap dump, no
    recursive YARA on the whole image. Budget: ~15 min wall time.
 4. Write tool output under the domain subdir (survey CSVs, parsed JSON).
-5. Summarize in `./analysis/<DOMAIN>/survey-<EVIDENCE_ID>.md`:
-   - Baseline facts (OS version, user list, uptime, process count, etc.)
-   - Anomalies worth pivoting on (one bullet each, with a line-anchored
-     pointer — e.g. `survey-EV01.md#L42`)
+5. Instantiate the template at `./analysis/<DOMAIN>/survey-<EVIDENCE_ID>.md`.
+   The six required sections (in order) are: `# Header`, `## Tools run`,
+   `## Findings of interest`, `## Lead summary table`, `## Negative results`,
+   `## Open questions`. Populate every field; do NOT leave placeholders
+   (`<sha256>`, `<EV_ID>`, etc.) in the file.
+   - **Header** must include: case ID, evidence ID, evidence sha256 (copy
+     from `./analysis/manifest.md`), domain, surveyor agent version
+     (`dfir-surveyor / discipline_v1_loaded`), UTC timestamp.
+   - **Tools run** lists every cheap-signal invocation:
+     `<tool> -> <invocation> -> exit <code> -> <output path>`.
+   - **Findings of interest** is 3–5 single-line bullets each with a
+     line-anchored pointer (`<file>#L<n>` or `<file>#L<n>-L<m>`) and a
+     stub lead ID at the end.
+   - **Lead summary table** has columns:
+     `lead_id | priority | hypothesis | next-step query | est-cost`. At
+     least one data row OR an explicit `(no leads)` placeholder.
+   - **Negative results** lists each cheap-signal pass that returned
+     nothing — keeps the investigator from re-running them.
+   - **Open questions** captures observations that fall outside the
+     surveyor's scope but might matter to correlation.
 6. Append leads to `./analysis/leads.md`. **Lead ID format**:
    `L-<EVIDENCE_ID>-<DOMAIN>-NN` where `NN` is a zero-padded counter scoped to
    this invocation (e.g. `L-EV01-memory-01`, `L-EV02-windows-artifacts-03`).
@@ -78,6 +108,17 @@ them verbatim for output paths; load the matching skill by path.
    ambiguous and let the investigator tag it. Cited IDs must validate
    against `.claude/skills/dfir-bootstrap/reference/mitre-attack.tsv`.
 8. Append to `./analysis/forensic_audit.log` via `audit.sh`.
+9. **Lint gate (MANDATORY before returning).** Run:
+   ```bash
+   bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/lint-survey.sh" \
+       ./analysis/<DOMAIN>/survey-<EVIDENCE_ID>.md
+   ```
+   - Exit 0 = compliant; you may return success to the orchestrator.
+   - Nonzero = the lint printed `ERR:` lines naming each violation. STOP,
+     fix every reported violation in the survey file, re-run the lint
+     until exit 0. Do NOT return success on a failing lint — the
+     orchestrator gates Phase 3 dispatch on this lint, so a non-zero exit
+     blocks the next wave for this (evidence × domain) pair.
 
 ## Output (return to orchestrator, ≤250 words)
 - `EVIDENCE_ID`, `DOMAIN`, top 3–5 leads (one line each, with full `lead_id`)
