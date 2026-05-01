@@ -52,7 +52,7 @@ and investigator write it on first append.)
 | 3 Investigate | `dfir-investigator` | sonnet | one per lead | one lead row + its pointer | `analysis/<domain>/findings.md`, updates `leads.md` status, may append |
 | 4 Correlate | `dfir-correlator` | **opus** | once per wave | all `findings.md` | `analysis/correlation.md`, may append `L-CORR-*` leads |
 | 5 Report | `dfir-reporter` | haiku | once | correlation + findings | `reports/final.md` + `reports/stakeholder-summary.md` |
-| 6 QA | `dfir-qa` | **opus** | once at close | all case docs + authoritative artifacts | corrects errors in place via `Edit`, transitions non-terminal leads, writes `reports/qa-review.md` |
+| 6 QA | `dfir-qa` | **opus** | self-loops to convergence | all case docs + authoritative artifacts | corrects errors in place via `Edit`, transitions non-terminal leads, may queue prior phases for re-dispatch via `analysis/.qa-redispatch-pending`, writes `reports/qa-review.md` |
 
 ## Lead ID conventions (collision-free under parallel fan-out)
 
@@ -131,25 +131,76 @@ to the invocation that produced it.
      from the stakeholder briefing, with pointers to both files.
    - **Do NOT close the case yet.** Phase 6 must run before sign-off.
 
-6. **Phase 6 — QA** (blocking; gate before sign-off)
-   - Invoke `dfir-qa` once. It cross-checks every case document against
+6. **Phase 6 — QA** (blocking; gate before sign-off; self-loops to convergence)
+   - Invoke `dfir-qa`. It cross-checks every case document against
      the authoritative artifacts on disk, enforces the lead-status
-     terminal invariant, gates on intake completeness, and corrects
-     numerical / labeling / lead-status errors in place via `Edit`.
-   - Possible verdicts:
-     - `PASS` — no changes required; case ready to sign off.
-     - `PASS-WITH-CHANGES` — corrections applied; case ready to sign
-       off. Relay the QA agent's edit count and lead-transition count
-       to the user.
-     - `BLOCKED` — a fix would require new analysis (e.g. a
-       reconciliation that flips a headline). Relay the BLOCKED
-       items to the user and dispatch a focused Phase 3 lead or a
-       Phase 4 re-correlation as appropriate. Re-run Phase 5 if
-       headlines changed; re-run Phase 6 after.
-   - Hard stop after the second QA pass. If still BLOCKED, surface
-     to the user.
-   - On `PASS` / `PASS-WITH-CHANGES`, relay `reports/qa-review.md`
-     pointer to the user and mark the case CLOSED.
+     terminal invariant, gates on intake completeness, corrects
+     numerical / labeling / lead-status errors in place via `Edit`,
+     **and may queue any prior phase for re-dispatch** by appending
+     rows to `./analysis/.qa-redispatch-pending`.
+   - Possible verdicts on each pass:
+     - `PASS` — no changes required this pass.
+     - `PASS-WITH-CHANGES` — corrections applied this pass.
+     - `BLOCKED` — a fix would require a brand-new investigation
+       hypothesis (not a re-run). Surface the BLOCKED items to the
+       user and route any new hypothesis through the correlator →
+       Phase 3 path.
+   - **Re-dispatch loop.** When QA returns, read
+     `./analysis/.qa-redispatch-pending` (if present and non-empty).
+     For each row:
+     - `phase=1`, `target=EV<NN>` → invoke `dfir-triage` against that
+       single evidence item only (pass `EVIDENCE_ID=EV<NN>` in the
+       prompt; triage is idempotent and re-classifies that row).
+     - `phase=2`, `target=EV<NN> × <DOMAIN>` → invoke `dfir-surveyor`
+       with that pair (single invocation; do not fan out the full
+       Phase-2 wave).
+     - `phase=4` → invoke `dfir-correlator` once.
+     - `phase=5` → invoke `dfir-reporter` once.
+     Emit one audit-log row per dispatched phase using the
+     `[qa-redispatch]` action prefix (see "Audit-log conventions"
+     below). After all queued rows are dispatched, move
+     `./analysis/.qa-redispatch-pending` aside as
+     `./analysis/.qa-redispatch-pending.<sha>.consumed` (preserves the
+     directive history) and re-invoke `dfir-qa`. The freshly-invoked
+     QA pass will re-read everything and either request more
+     re-dispatches or converge.
+   - **Convergence-based termination.** The orchestrator stops the
+     QA loop when QA returns with **all** of:
+     - `Convergence signal: CONVERGED` in its return summary, AND
+     - empty / absent `./analysis/.qa-redispatch-pending`, AND
+     - the qa-review.md sha matches the previous pass's sha (read
+       from `./analysis/qa-history.md`).
+     Treat these as a single signal — QA computes them itself and
+     reports them via the convergence section of `qa-review.md`.
+   - **Pathological-loop guard.** If the qa-review.md sha is
+     unchanged across two consecutive passes BUT the directive file
+     is non-empty (QA keeps requesting the same re-dispatch and
+     nothing changes), halt the loop, log
+     `[qa-redispatch] HALT: stuck loop` with the duplicated sha and
+     the directive contents to `forensic_audit.log`, and surface to
+     the user. Do not silently keep looping.
+   - On convergence, relay `reports/qa-review.md` pointer to the user
+     and mark the case CLOSED.
+
+### Audit-log conventions for Phase 6 re-dispatch
+
+When the orchestrator picks up a row from
+`.qa-redispatch-pending` and dispatches the named phase, it emits an
+`audit.sh` row whose `action` field starts with `[qa-redispatch]`.
+This distinguishes QA-initiated re-dispatches from the orchestrator's
+normal Phase-3 wave dispatches (which use no special prefix).
+
+```
+bash .claude/skills/dfir-bootstrap/audit.sh \
+  "[qa-redispatch] phase=1 target=EV02" \
+  "QA flagged manifest mis-classification at analysis/manifest.md#L7" \
+  "dispatch dfir-triage on EV02"
+```
+
+The `[qa-redispatch]` prefix is convention only — `audit.sh` itself
+takes the action string verbatim. QA's discipline-ledger sweep
+(Protocol step 8) counts these rows to confirm the orchestrator
+honored every directive row.
 
 ## Context hygiene rules (orchestrator)
 
@@ -198,10 +249,19 @@ earlier phases. On resume:
    - Missing → run Phase 5.
    - Present → check `./reports/qa-review.md`.
      - Missing → run Phase 6.
-     - Present with verdict `BLOCKED` → re-dispatch the leads it
-       called out, then re-run Phase 5 / Phase 6.
-     - Present with verdict `PASS` or `PASS-WITH-CHANGES` → relay the
-       executive summary from `final.md`, confirm done.
+     - Present with verdict `BLOCKED` → surface the BLOCKED items;
+       re-dispatch a focused Phase 3 lead or correlator-driven
+       hypothesis, then re-run Phase 5 / Phase 6.
+     - Present and `./analysis/.qa-redispatch-pending` exists and is
+       non-empty → resume the Phase 6 re-dispatch loop: dispatch
+       each queued phase, then re-invoke QA.
+     - Present with verdict `PASS` / `PASS-WITH-CHANGES` AND its
+       Convergence section reports `Converged: yes` AND the directive
+       file is absent/empty → relay the executive summary from
+       `final.md`, confirm done.
+     - Present with verdict `PASS` / `PASS-WITH-CHANGES` but
+       `Converged: no` (e.g. session died between QA passes) →
+       re-invoke QA so it can re-check and converge.
 
 Never delete or truncate `leads.md`, `findings.md`, `correlation.md`, or
 `qa-review.md` on resume. They are the chain-of-custody trail.
