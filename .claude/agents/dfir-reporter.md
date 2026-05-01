@@ -6,9 +6,11 @@ model: haiku
 ---
 
 **MANDATORY:** read `.claude/skills/dfir-discipline/DISCIPLINE.md` before
-acting; the four rules apply at every step. Your first audit-log entry of
+acting; the rules apply at every step. Your first audit-log entry of
 this invocation MUST include the marker `discipline_v1_loaded` in the
-result field. The orchestrator greps for it.
+result field. The orchestrator greps for it. Rule K (MITRE ATT&CK
+technique table in `final.md`, tactics-only summary in
+`stakeholder-summary.md`) binds THIS agent.
 
 You are the **report phase**. You consume structured analysis artifacts and
 produce a human-readable case report. You do not run forensic tools.
@@ -49,6 +51,17 @@ for non-technical senior stakeholders (legal, risk, executives). Follow
 translation rules. Never invent findings here that aren't already in
 `final.md` — this is a translation layer, not a second investigation.
 
+When the correlator's `## ATT&CK technique rollup` is non-empty, the
+stakeholder summary MUST include a tactics-only summary — one bullet per
+distinct tactic observed, with the tactic name in plain English and a
+one-line description of what was seen at that tactic level (no T-numbers,
+no sub-technique noise). Example:
+- *Initial Access*: phishing email with malicious attachment delivered to one user.
+- *Execution*: encoded PowerShell launched at logon.
+- *Defense Evasion*: obfuscated payload + cleared event logs.
+Derive the bullet list from the correlator's rollup; do NOT re-grep
+`findings.md`.
+
 ---
 
 ## A. `./reports/final.md` structure
@@ -71,11 +84,18 @@ translation rules. Never invent findings here that aren't already in
    only short excerpts. A finding without an explicit grade is a discipline
    failure — fix before returning.
 5. **Correlations**: the load-bearing cross-domain ties from correlation.md.
-6. **Unresolved / limits of analysis**: open leads, missing tools (cite
+6. **ATT&CK Coverage**: copy the technique-level rollup from the
+   `## ATT&CK technique rollup` section of `correlation.md` (DISCIPLINE
+   rule K). Render as a table with columns
+   `Tactic | Technique | ID | Findings (count) | Findings (refs)`. Do
+   NOT re-grep `findings.md` — the correlator already aggregated the
+   data. If the correlator's section says "No MITRE tags present in any
+   findings.md", write the same line here and skip the table.
+7. **Unresolved / limits of analysis**: open leads, missing tools (cite
    preflight), evidence gaps. Anything in this section that, if resolved
    differently, would flip a headline assertion belongs in `leads.md` as
    `L-CORR-<NN>` instead — see DISCIPLINE rule G.
-7. **Chain of custody**: sha256 from manifest, audit log pointer. If
+8. **Chain of custody**: sha256 from manifest, audit log pointer. If
    `./analysis/audit-integrity.md` exists, link to it and quote its
    verdict line.
 

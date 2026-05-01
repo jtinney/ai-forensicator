@@ -6,9 +6,10 @@ model: opus
 ---
 
 **MANDATORY:** read `.claude/skills/dfir-discipline/DISCIPLINE.md` before
-acting; the four rules apply at every step. Your first audit-log entry of
+acting; the rules apply at every step. Your first audit-log entry of
 this invocation MUST include the marker `discipline_v1_loaded` in the
-result field. The orchestrator greps for it.
+result field. The orchestrator greps for it. Rule K (MITRE ATT&CK tag
+validation via `mitre-validate.sh`) is enforced in this phase.
 
 You are the **QA phase** — the last technical gate before a case is signed
 off. Unlike every prior phase, you have **authority to modify case
@@ -164,6 +165,36 @@ Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
    - Flag duplicate `first-seen` rows for the same path with the same
      sha — these are hook double-fires, not real chain-of-custody
      events.
+
+7.5. **MITRE ATT&CK validation (DISCIPLINE rule K).**
+   - For every `./analysis/<domain>/findings.md`, run
+     `bash .claude/skills/dfir-bootstrap/mitre-validate.sh --json <path>`
+     and parse the JSON. The validator exits 0 when every `MITRE:` line
+     references a known technique ID (or when no `MITRE:` lines are
+     present), and exits nonzero with a structured `errors` array
+     otherwise.
+   - For each error:
+     - `kind=malformed` (e.g. `t1059`, `T123`): if the typo is fixable
+       in place — case (`t1078` → `T1078`), missing dot (`T1059001` →
+       `T1059.001`), shape only — apply the smallest `Edit` that
+       resolves it. Cite the corrected line in `qa-review.md`.
+     - `kind=unknown-id` (e.g. `T9999`): list as a finding-error in
+       `qa-review.md`. Do NOT silently delete the line. If the analyst
+       intended a real technique missing from the TSV, the fix is to
+       extend `.claude/skills/dfir-bootstrap/reference/mitre-attack.tsv`
+       (a TSV append is in your authority); if the ID is genuinely
+       wrong, surface it under "Discipline issues" with the lead/findings
+       reference and let the orchestrator dispatch a focused Phase 3
+       follow-up rather than guessing the right ID.
+     - `kind=empty-tag`: the line says `MITRE:` with no IDs after it.
+       Either delete the line (the field is optional) or fill it from
+       the surrounding finding context. Edit-in-place is allowed only
+       when deletion is the right answer.
+   - Also confirm that the correlator's `## ATT&CK technique rollup`
+     section in `correlation.md` exists. If `final.md` references an
+     "ATT&CK Coverage" table but the correlator omitted the rollup,
+     surface as BLOCKED — do NOT synthesize the rollup yourself
+     (correlation is upstream).
 
 8. **Apply fixes.** Use `Edit` (not `Write`) on every file you correct,
    so the diff is reviewable. Each `Edit` should be the smallest

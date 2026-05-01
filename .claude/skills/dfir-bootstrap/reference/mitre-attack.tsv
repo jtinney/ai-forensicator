@@ -1,0 +1,192 @@
+# MITRE ATT&CK Enterprise — curated subset (offline reference)
+#
+# Format:  <id>\t<tactic>\t<name>
+#
+# Lines starting with '#' and blank lines are ignored.
+# `id` is the technique or sub-technique ID (T#### or T####.###).
+# `tactic` is the primary tactic name; sub-techniques inherit their parent's tactic.
+# `name` is the technique's canonical short name.
+#
+# This file is the authoritative allowed-list for `mitre-validate.sh`. A
+# `MITRE:` line on a finding must reference IDs present here. To extend with
+# additional techniques, append rows in the same tab-separated format and keep
+# the file sorted by ID. Source values were taken from the public MITRE
+# enterprise-attack matrix; cross-check at https://attack.mitre.org/techniques/
+# before adding new rows.
+#
+# Coverage: ~120 of the most-cited enterprise techniques across all 14 tactics.
+# Analysts can extend.
+#
+# id	tactic	name
+T1003	Credential Access	OS Credential Dumping
+T1003.001	Credential Access	OS Credential Dumping: LSASS Memory
+T1003.002	Credential Access	OS Credential Dumping: Security Account Manager
+T1003.003	Credential Access	OS Credential Dumping: NTDS
+T1003.004	Credential Access	OS Credential Dumping: LSA Secrets
+T1003.005	Credential Access	OS Credential Dumping: Cached Domain Credentials
+T1003.006	Credential Access	OS Credential Dumping: DCSync
+T1005	Collection	Data from Local System
+T1007	Discovery	System Service Discovery
+T1010	Discovery	Application Window Discovery
+T1012	Discovery	Query Registry
+T1014	Defense Evasion	Rootkit
+T1016	Discovery	System Network Configuration Discovery
+T1018	Discovery	Remote System Discovery
+T1021	Lateral Movement	Remote Services
+T1021.001	Lateral Movement	Remote Services: Remote Desktop Protocol
+T1021.002	Lateral Movement	Remote Services: SMB/Windows Admin Shares
+T1021.003	Lateral Movement	Remote Services: Distributed Component Object Model
+T1021.004	Lateral Movement	Remote Services: SSH
+T1021.005	Lateral Movement	Remote Services: VNC
+T1021.006	Lateral Movement	Remote Services: Windows Remote Management
+T1027	Defense Evasion	Obfuscated Files or Information
+T1027.002	Defense Evasion	Obfuscated Files or Information: Software Packing
+T1027.005	Defense Evasion	Obfuscated Files or Information: Indicator Removal from Tools
+T1033	Discovery	System Owner/User Discovery
+T1036	Defense Evasion	Masquerading
+T1036.003	Defense Evasion	Masquerading: Rename System Utilities
+T1036.005	Defense Evasion	Masquerading: Match Legitimate Name or Location
+T1037	Persistence	Boot or Logon Initialization Scripts
+T1041	Exfiltration	Exfiltration Over C2 Channel
+T1046	Discovery	Network Service Discovery
+T1047	Execution	Windows Management Instrumentation
+T1048	Exfiltration	Exfiltration Over Alternative Protocol
+T1049	Discovery	System Network Connections Discovery
+T1053	Execution	Scheduled Task/Job
+T1053.005	Execution	Scheduled Task/Job: Scheduled Task
+T1055	Defense Evasion	Process Injection
+T1055.001	Defense Evasion	Process Injection: Dynamic-link Library Injection
+T1055.002	Defense Evasion	Process Injection: Portable Executable Injection
+T1055.012	Defense Evasion	Process Injection: Process Hollowing
+T1056	Collection	Input Capture
+T1056.001	Collection	Input Capture: Keylogging
+T1057	Discovery	Process Discovery
+T1059	Execution	Command and Scripting Interpreter
+T1059.001	Execution	Command and Scripting Interpreter: PowerShell
+T1059.003	Execution	Command and Scripting Interpreter: Windows Command Shell
+T1059.004	Execution	Command and Scripting Interpreter: Unix Shell
+T1059.005	Execution	Command and Scripting Interpreter: Visual Basic
+T1059.006	Execution	Command and Scripting Interpreter: Python
+T1059.007	Execution	Command and Scripting Interpreter: JavaScript
+T1068	Privilege Escalation	Exploitation for Privilege Escalation
+T1069	Discovery	Permission Groups Discovery
+T1070	Defense Evasion	Indicator Removal
+T1070.001	Defense Evasion	Indicator Removal: Clear Windows Event Logs
+T1070.004	Defense Evasion	Indicator Removal: File Deletion
+T1070.006	Defense Evasion	Indicator Removal: Timestomp
+T1071	Command and Control	Application Layer Protocol
+T1071.001	Command and Control	Application Layer Protocol: Web Protocols
+T1071.004	Command and Control	Application Layer Protocol: DNS
+T1072	Execution	Software Deployment Tools
+T1074	Collection	Data Staged
+T1078	Defense Evasion	Valid Accounts
+T1078.002	Defense Evasion	Valid Accounts: Domain Accounts
+T1078.003	Defense Evasion	Valid Accounts: Local Accounts
+T1078.004	Defense Evasion	Valid Accounts: Cloud Accounts
+T1082	Discovery	System Information Discovery
+T1083	Discovery	File and Directory Discovery
+T1087	Discovery	Account Discovery
+T1090	Command and Control	Proxy
+T1090.003	Command and Control	Proxy: Multi-hop Proxy
+T1095	Command and Control	Non-Application Layer Protocol
+T1098	Persistence	Account Manipulation
+T1102	Command and Control	Web Service
+T1105	Command and Control	Ingress Tool Transfer
+T1110	Credential Access	Brute Force
+T1110.001	Credential Access	Brute Force: Password Guessing
+T1110.003	Credential Access	Brute Force: Password Spraying
+T1110.004	Credential Access	Brute Force: Credential Stuffing
+T1112	Defense Evasion	Modify Registry
+T1113	Collection	Screen Capture
+T1114	Collection	Email Collection
+T1119	Collection	Automated Collection
+T1133	Initial Access	External Remote Services
+T1134	Privilege Escalation	Access Token Manipulation
+T1135	Discovery	Network Share Discovery
+T1136	Persistence	Create Account
+T1136.001	Persistence	Create Account: Local Account
+T1136.002	Persistence	Create Account: Domain Account
+T1140	Defense Evasion	Deobfuscate/Decode Files or Information
+T1190	Initial Access	Exploit Public-Facing Application
+T1195	Initial Access	Supply Chain Compromise
+T1199	Initial Access	Trusted Relationship
+T1203	Execution	Exploitation for Client Execution
+T1204	Execution	User Execution
+T1204.001	Execution	User Execution: Malicious Link
+T1204.002	Execution	User Execution: Malicious File
+T1210	Lateral Movement	Exploitation of Remote Services
+T1211	Defense Evasion	Exploitation for Defense Evasion
+T1212	Credential Access	Exploitation for Credential Access
+T1213	Collection	Data from Information Repositories
+T1218	Defense Evasion	System Binary Proxy Execution
+T1218.005	Defense Evasion	System Binary Proxy Execution: Mshta
+T1218.010	Defense Evasion	System Binary Proxy Execution: Regsvr32
+T1218.011	Defense Evasion	System Binary Proxy Execution: Rundll32
+T1219	Command and Control	Remote Access Software
+T1222	Defense Evasion	File and Directory Permissions Modification
+T1485	Impact	Data Destruction
+T1486	Impact	Data Encrypted for Impact
+T1489	Impact	Service Stop
+T1490	Impact	Inhibit System Recovery
+T1518	Discovery	Software Discovery
+T1518.001	Discovery	Software Discovery: Security Software Discovery
+T1543	Persistence	Create or Modify System Process
+T1543.003	Persistence	Create or Modify System Process: Windows Service
+T1546	Persistence	Event Triggered Execution
+T1546.003	Persistence	Event Triggered Execution: Windows Management Instrumentation Event Subscription
+T1547	Persistence	Boot or Logon Autostart Execution
+T1547.001	Persistence	Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder
+T1547.004	Persistence	Boot or Logon Autostart Execution: Winlogon Helper DLL
+T1547.009	Persistence	Boot or Logon Autostart Execution: Shortcut Modification
+T1548	Privilege Escalation	Abuse Elevation Control Mechanism
+T1548.002	Privilege Escalation	Abuse Elevation Control Mechanism: Bypass User Account Control
+T1550	Defense Evasion	Use Alternate Authentication Material
+T1550.002	Defense Evasion	Use Alternate Authentication Material: Pass the Hash
+T1550.003	Defense Evasion	Use Alternate Authentication Material: Pass the Ticket
+T1552	Credential Access	Unsecured Credentials
+T1552.001	Credential Access	Unsecured Credentials: Credentials In Files
+T1555	Credential Access	Credentials from Password Stores
+T1555.003	Credential Access	Credentials from Password Stores: Credentials from Web Browsers
+T1557	Credential Access	Adversary-in-the-Middle
+T1558	Credential Access	Steal or Forge Kerberos Tickets
+T1558.003	Credential Access	Steal or Forge Kerberos Tickets: Kerberoasting
+T1560	Collection	Archive Collected Data
+T1562	Defense Evasion	Impair Defenses
+T1562.001	Defense Evasion	Impair Defenses: Disable or Modify Tools
+T1562.002	Defense Evasion	Impair Defenses: Disable Windows Event Logging
+T1562.004	Defense Evasion	Impair Defenses: Disable or Modify System Firewall
+T1564	Defense Evasion	Hide Artifacts
+T1564.001	Defense Evasion	Hide Artifacts: Hidden Files and Directories
+T1564.003	Defense Evasion	Hide Artifacts: Hidden Window
+T1566	Initial Access	Phishing
+T1566.001	Initial Access	Phishing: Spearphishing Attachment
+T1566.002	Initial Access	Phishing: Spearphishing Link
+T1567	Exfiltration	Exfiltration Over Web Service
+T1568	Command and Control	Dynamic Resolution
+T1569	Execution	System Services
+T1569.002	Execution	System Services: Service Execution
+T1570	Lateral Movement	Lateral Tool Transfer
+T1571	Command and Control	Non-Standard Port
+T1572	Command and Control	Protocol Tunneling
+T1573	Command and Control	Encrypted Channel
+T1573.001	Command and Control	Encrypted Channel: Symmetric Cryptography
+T1573.002	Command and Control	Encrypted Channel: Asymmetric Cryptography
+T1574	Persistence	Hijack Execution Flow
+T1574.001	Persistence	Hijack Execution Flow: DLL Search Order Hijacking
+T1574.002	Persistence	Hijack Execution Flow: DLL Side-Loading
+T1583	Resource Development	Acquire Infrastructure
+T1584	Resource Development	Compromise Infrastructure
+T1585	Resource Development	Establish Accounts
+T1586	Resource Development	Compromise Accounts
+T1587	Resource Development	Develop Capabilities
+T1588	Resource Development	Obtain Capabilities
+T1589	Reconnaissance	Gather Victim Identity Information
+T1590	Reconnaissance	Gather Victim Network Information
+T1591	Reconnaissance	Gather Victim Org Information
+T1592	Reconnaissance	Gather Victim Host Information
+T1593	Reconnaissance	Search Open Websites/Domains
+T1595	Reconnaissance	Active Scanning
+T1608	Resource Development	Stage Capabilities
+T1610	Defense Evasion	Deploy Container
+T1611	Privilege Escalation	Escape to Host
+T1620	Defense Evasion	Reflective Code Loading

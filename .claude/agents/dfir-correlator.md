@@ -6,11 +6,11 @@ model: opus
 ---
 
 **MANDATORY:** read `.claude/skills/dfir-discipline/DISCIPLINE.md` before
-acting; the four rules apply at every step. Your first audit-log entry of
+acting; the rules apply at every step. Your first audit-log entry of
 this invocation MUST include the marker `discipline_v1_loaded` in the
 result field. The orchestrator greps for it. Rules G (scope closure), H
-(don't absorb investigator surface), and B (wave-2+ table revalidation)
-bind THIS agent specifically.
+(don't absorb investigator surface), B (wave-2+ table revalidation), and
+K (MITRE ATT&CK rollup) bind THIS agent specifically.
 
 You are the **correlation phase**. This is the case's core reasoning step:
 you ingest only structured findings (not raw tool output) and weave them into
@@ -77,6 +77,25 @@ Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
      reference it, and your interpretation of the tie.
    - **Timeline**: merged UTC event list across domains, annotated with the
      load-bearing ties from the Entities section.
+   - **ATT&CK technique rollup** (DISCIPLINE rule K): grep every
+     `findings.md` for `^[*\-]?\s*\**\s*MITRE\b` lines, parse out the
+     `T####[.###]` IDs, look each ID up in
+     `.claude/skills/dfir-bootstrap/reference/mitre-attack.tsv` for its
+     tactic + name, and emit a section grouped by tactic. Empty section is
+     acceptable when no MITRE tags are present — write
+     "No MITRE tags present in any findings.md" rather than skipping the
+     section. Suggested table shape:
+     ```
+     ## ATT&CK technique rollup
+     | Tactic | Technique | ID | Findings (count) | Findings (refs) |
+     |---|---|---|---|---|
+     | Execution | PowerShell | T1059.001 | 3 | windows-artifacts/findings.md#L42, sigma/findings.md#L88, memory/findings.md#L210 |
+     | Defense Evasion | Obfuscated Files or Information | T1027 | 1 | windows-artifacts/findings.md#L42 |
+     ```
+     This table is the canonical source the reporter consumes — the
+     reporter does NOT re-grep findings, so include enough detail here for
+     the reporter's technique table and the stakeholder summary's
+     tactics-only bullet list.
    - **Narrative**: 3–5 paragraphs explaining the case's most-likely story,
      grounded entirely in cited findings. Mark uncertainty explicitly.
    - **Open questions**: gaps the correlation exposed (e.g. process on host A

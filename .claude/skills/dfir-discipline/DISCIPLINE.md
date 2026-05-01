@@ -274,6 +274,76 @@ catch it earlier.
 
 ---
 
+## Rule K — MITRE ATT&CK tagging on findings (optional, validated)
+**(binds: dfir-surveyor, dfir-investigator, dfir-correlator, dfir-reporter, dfir-qa)**
+
+**Findings entries MAY carry an optional `MITRE:` line that maps the
+described adversary behavior to one or more enterprise ATT&CK technique IDs.
+The line is OPTIONAL — its absence is not a discipline failure. If present,
+every cited ID must (a) match the shape `T####` or `T####.###` and (b) be
+present in the offline reference at
+`.claude/skills/dfir-bootstrap/reference/mitre-attack.tsv`. The QA phase
+validates this with `bash .claude/skills/dfir-bootstrap/mitre-validate.sh
+<findings.md>`; the validator exits nonzero on malformed or unknown IDs.
+Tagging is analyst-driven — never inferred by tooling.**
+
+**Why:** Free-text descriptions of adversary behavior do not aggregate.
+ATT&CK tags let the correlator roll up techniques across evidence items
+("all findings of T1021.001 — RDP lateral movement") and let the reporter
+produce a per-technique table and a tactics-only stakeholder summary.
+Standardized vocabulary also helps SOC / threat-intel readers consume the
+case without DFIR-specific phrasing.
+
+**Line shape:** `MITRE:` followed by a comma-separated list of technique
+IDs. Each ID may carry an inline tactic + name comment in parentheses. The
+line is recognized in any of these markdown shapes — the validator
+tolerates them all:
+
+```
+- **MITRE:** T1059.001 (Execution — PowerShell), T1027 (Defense Evasion — Obfuscated Files)
+- MITRE: T1078, T1078.002
+**MITRE:** T1021.001
+```
+
+**Worked example (a finding entry with the optional line):**
+
+```
+## 2026-04-25 14:12:33 UTC — L-EV01-windows-artifacts-03 — confirmed
+- **Hypothesis:** the encoded PowerShell launched at logon staged the C2 dropper.
+- **Cheapest disconfirmation queries (in order):** Prefetch hit (pass), Sysmon 1 (pass), Defender quarantine (pass)
+- **MITRE:** T1059.001 (Execution — PowerShell), T1027 (Defense Evasion — Obfuscated Files)
+- **Artifacts reviewed:** analysis/windows-artifacts/prefetch.csv#L88, analysis/sigma/timeline.csv#L1207
+- **Finding:** powershell.exe -enc <b64> spawned by explorer.exe at logon, payload base64 of an HTTPS downloader.
+- **Interpretation:** initial-access script staged the dropper minutes after first logon.
+- **Confidence:** HIGH
+- **Adjacent surface checked:**
+    - Did the same parent spawn other encoded scripts?: answered (no)
+    - Did the dropper's HTTPS host appear in DNS or Suricata?: escalated as L-EV01-network-e02
+- **Next pivot:** L-EV01-network-e02
+```
+
+**How to apply:**
+- Surveyor: when a survey-pass anomaly already maps obviously to a single
+  technique (e.g. a Run-key persistence row → `T1547.001`), include the
+  `MITRE:` line on the survey-stub finding. When the mapping is ambiguous,
+  leave the line off and let the investigator tag it.
+- Investigator: tag the findings entry once the hypothesis is resolved.
+  If the mapping requires a sub-technique not present in the TSV, append
+  the row to the TSV in the same edit batch — do NOT reach for a vague
+  parent ID just to satisfy validation.
+- Correlator: aggregate across every `findings.md`. Emit a per-tactic
+  rollup section in `correlation.md` even if the section is empty (write
+  "No MITRE tags present" rather than omitting the section).
+- Reporter: render the technique table in `final.md` and a tactics-only
+  bullet list in `stakeholder-summary.md`. Do NOT re-grep findings — use
+  the data the correlator aggregated.
+- QA: run `mitre-validate.sh` on every `analysis/<domain>/findings.md`.
+  Apply Edit-in-place when a typo is fixable (`T1059001` → `T1059.001`,
+  `t1078` → `T1078`); list as a finding-error in `qa-review.md` when the
+  ID is genuinely unknown.
+
+---
+
 ## Rule J — Intake completeness is a precondition
 **(binds: dfir-triage, dfir-correlator, dfir-reporter, dfir-qa)**
 
@@ -316,6 +386,11 @@ yields to operator input.** The intake interview is exempt from the
 - Rules I and J are gate-enforced by `leads-check.sh` and
   `intake-check.sh`; the QA phase agent additionally has authority to
   apply remediation Edits in place.
+- Rule K is QA-enforced by `mitre-validate.sh` against the offline TSV
+  at `.claude/skills/dfir-bootstrap/reference/mitre-attack.tsv`. The
+  rule is opt-in for the writer (the line is optional) but mandatory for
+  the validator (if present, must validate). Extending the TSV is the
+  expected response when a real technique is missing.
 - When in doubt about whether a borderline item is in scope (G) or
   whether the surface is exhausted (H), prefer the more conservative
   (in-scope / not-exhausted) choice. The cost of an extra lead is one
