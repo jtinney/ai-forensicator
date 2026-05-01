@@ -50,7 +50,7 @@ and investigator write it on first append.)
 | 1 Triage | `dfir-triage` | haiku | once | evidence dir | `analysis/manifest.md`, `analysis/preflight.md`, `analysis/leads.md` header, `reports/00_intake.md` (interview-completed) |
 | 2 Survey | `dfir-surveyor` | sonnet | one per (evidence × domain) | manifest + one evidence item | `analysis/<domain>/survey-*.md`, appends `leads.md` |
 | 3 Investigate | `dfir-investigator` | sonnet | one per lead | one lead row + its pointer | `analysis/<domain>/findings.md`, updates `leads.md` status, may append |
-| 4 Correlate | `dfir-correlator` | **opus** | once per wave | all `findings.md` | `analysis/correlation.md`, may append `L-CORR-*` leads |
+| 4 Correlate | `dfir-correlator` | **opus** | once per correlation-loop iteration (drives Phase 3 re-dispatch until convergence) | all `findings.md` | `analysis/correlation.md`, appends `correlation-history.md` row, may append `L-CORR-*` leads |
 | 5 Report | `dfir-reporter` | haiku | once | correlation + findings | `reports/final.md` + `reports/stakeholder-summary.md` |
 | 6 QA | `dfir-qa` | **opus** | once at close | all case docs + authoritative artifacts | corrects errors in place via `Edit`, transitions non-terminal leads, writes `reports/qa-review.md` |
 
@@ -99,10 +99,12 @@ to the invocation that produced it.
      The investigator flips its lead's status to `in-progress` before it
      starts, so concurrent waves do not double-take a lead.
    - Leads that `escalate` will append new `-e` rows; run another wave until
-     no new `high` leads remain or you hit the budget cap.
-   - Budget cap: 3 waves, or a case-specific cap from the prompt.
+     no new `high` leads remain. Investigation waves run as long as new
+     `high`-priority leads keep appearing; the correlation loop's
+     convergence guard (Phase 4 below) is the terminating condition for
+     the case as a whole.
 
-4. **Phase 4 — Correlate** (blocking)
+4. **Phase 4 — Correlate** (blocking; convergence-guarded loop)
    - **Baseline-artifact gate (BEFORE invoking the correlator):** for each
      domain that has `./analysis/<DOMAIN>/findings.md` non-empty (i.e. an
      investigator wrote to it), run
@@ -112,14 +114,68 @@ to the invocation that produced it.
      `high`, status `open`, hypothesis
      `Re-generate <missing-list> for <DOMAIN>`. **Correlation does NOT
      proceed around a baseline gap** — run a focused Phase 3 wave to fill
-     the gap, then re-attempt the gate. Hard stop after the third
-     baseline-fill wave; if still missing, mark `blocked` and proceed to
-     correlation with an explicit "baseline-incomplete" caveat in the
-     correlator's output.
-   - Invoke `dfir-correlator` once after the gate passes.
-   - If it appends new `L-CORR-*` leads (non-baseline), run one more
-     investigation wave, then re-correlate. Hard stop after the second
-     correlation pass.
+     the gap, then re-attempt the gate. If a baseline artifact still
+     cannot be regenerated after a remediation wave, mark the
+     `L-BASELINE-*` lead `blocked` with a documented external-dependency
+     reason and proceed to correlation with an explicit
+     "baseline-incomplete" caveat in the correlator's output.
+   - **Correlation loop with convergence guard.** The loop drives
+     re-correlation until the case converges. There is no fixed wave
+     cap; the case-close gates (intake populated, all leads terminal,
+     baselines present, QA pass, final report) are the terminating
+     condition.
+
+     For each iteration `n` (starting at `n=1`):
+     1. Invoke `dfir-correlator`. The correlator reads the prior
+        `correlation.md` (if present) and computes a since-last-correlation
+        diff before rewriting the file.
+     2. Compute `sha256sum analysis/correlation.md | awk '{print $1}'` and
+        capture it as `SHA_n`.
+     3. Append a row to `./analysis/correlation-history.md`. On the
+        first iteration, create the file with this exact header:
+
+        ```
+        # Correlation-loop convergence ledger
+        | utc_timestamp | wave_n | sha256 | new_L-CORR_count | terminal_L-CORR_count |
+        |---------------|--------|--------|------------------|------------------------|
+        ```
+
+        Then append the iteration's row in the same format:
+
+        ```
+        | <UTC timestamp> | <wave_n> | <sha256> | <new_L-CORR_count> | <terminal_L-CORR_count> |
+        ```
+
+        Where `new_L-CORR_count` is the count of `L-CORR-*` leads added by
+        this iteration and `terminal_L-CORR_count` is the count of
+        `L-CORR-*` rows in `leads.md` whose status is `confirmed` /
+        `refuted` / `blocked`.
+     4. Append an audit-log row via `audit.sh` using the convention:
+        `[correlation] wave <n> sha=<sha> leads_new=<x> leads_terminal=<y>`.
+        Grepping `[correlation]` over `forensic_audit.log` enumerates the
+        correlation history at any point.
+     5. Decide:
+        - **Continue** if either (a) any `L-CORR-*` lead is non-terminal,
+          OR (b) `SHA_n != SHA_(n-1)` (correlation output changed between
+          iterations). Dispatch a focused Phase 3 wave for the open
+          `L-CORR-*` leads and return to step 1.
+        - **Exit** when both (a) every `L-CORR-*` lead is in a terminal
+          status (`confirmed` / `refuted` / `blocked`) AND (b) `SHA_n ==
+          SHA_(n-1)` (the correlator's output has not changed since the
+          previous iteration). The case has converged; proceed to Phase 5.
+   - **Pathological-loop detector.** If two consecutive iterations
+     produce identical `correlation.md` hashes (`SHA_n == SHA_(n-1)`)
+     but `L-CORR-*` leads remain non-terminal, the loop has stalled —
+     the correlator is not finding new ties and the orchestrator's
+     Phase 3 dispatches are not closing the open `L-CORR-*` leads.
+     Halt the loop:
+     1. Append an audit-log row:
+        `[correlation] pathological-loop halt: hash=<sha> wave=<n> nonterminal_leads=<csv-list>`.
+     2. Mark each non-terminal `L-CORR-*` lead `blocked` in `leads.md`
+        with the note
+        `convergence reached but lead still non-terminal — manual review required`.
+     3. Proceed to Phase 5. The QA agent will surface the halt event in
+        `qa-review.md`.
 
 5. **Phase 5 — Report** (blocking)
    - Invoke `dfir-reporter` once. It produces two reports:
@@ -188,12 +244,20 @@ earlier phases. On resume:
    - Any `status=open` with priority `high`? Run another Phase 3 wave.
      Sort `L-BASELINE-*` first, then everything else.
    - All leads `confirmed`/`refuted`/`escalated`/`blocked`? Check for
-     `./analysis/correlation.md`:
-     - Missing → run Phase 4 (which itself has a baseline-artifact gate —
-       see Phase 4 above).
-     - Present but newer `L-CORR-*` leads are `open` → one more Phase 3 wave,
-       then Phase 4 again.
-     - Correlation stable → Phase 5.
+     `./analysis/correlation.md` and
+     `./analysis/correlation-history.md`:
+     - `correlation.md` missing → run Phase 4 (which itself has a
+       baseline-artifact gate — see Phase 4 above).
+     - Any `L-CORR-*` lead `open` / `escalated` → next iteration of the
+       Phase 4 convergence loop (run a focused Phase 3 wave for those
+       leads, then re-invoke `dfir-correlator`).
+     - All `L-CORR-*` leads terminal AND the last two rows of
+       `correlation-history.md` have identical `sha256` → converged,
+       proceed to Phase 5.
+     - All `L-CORR-*` leads terminal but `correlation-history.md` is
+       absent or has only one row → run one more correlation iteration
+       to confirm convergence (the second hash either matches and we
+       exit, or differs and the loop continues).
 4. Check for `./reports/final.md`:
    - Missing → run Phase 5.
    - Present → check `./reports/qa-review.md`.

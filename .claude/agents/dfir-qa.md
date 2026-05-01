@@ -36,6 +36,7 @@ Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
 - `./analysis/forensic_audit.log` (discipline self-attestation)
 - All `./analysis/**/findings.md`
 - `./analysis/correlation.md`
+- `./analysis/correlation-history.md` (correlation-loop convergence record)
 - `./reports/final.md`
 - `./reports/stakeholder-summary.md`
 - Domain-specific authoritative artifacts (per-domain raw outputs you
@@ -108,6 +109,40 @@ Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
      `priority=low` and an explicit non-blocking justification in the
      row's notes), or `blocked` with a documented external dependency.
      Every other lead must be in {`confirmed`, `refuted`}.
+   - **`L-CORR-*` lead-status check.** Every `L-CORR-*` lead MUST be in
+     a terminal status (`confirmed` / `refuted` / `blocked`). A
+     non-terminal `L-CORR-*` at QA close is a lead-terminal invariant
+     violation; flag it in `qa-review.md` and note that the upstream
+     cause is the Phase 4 correlation-loop convergence guard not
+     having exited cleanly. Non-terminal `L-CORR-*` leads paired with a
+     pathological-loop halt audit row (see step 3.5) are the expected
+     failure mode and should be reported as such.
+
+3.5. **Correlation-loop convergence gate.**
+   - If `./analysis/correlation-history.md` is missing entirely while
+     `./analysis/correlation.md` exists, that is a discipline failure —
+     the orchestrator ran Phase 4 without recording the convergence
+     ledger. Flag in `qa-review.md` as
+     `DISCIPLINE-VIOLATION: correlation-history.md missing`. Do not
+     attempt to reconstruct the file (timestamps and hashes cannot be
+     back-filled accurately).
+   - Otherwise, read the last two non-header rows of
+     `correlation-history.md`. The two `sha256` values MUST be
+     identical (convergence reached). If not, the loop exited prematurely
+     — flag in `qa-review.md` and request a re-correlation from the
+     orchestrator (this is a BLOCKED-class item: do not attempt to
+     re-invoke the correlator yourself).
+   - If `correlation-history.md` has only one row, the loop exited
+     after a single pass; that is acceptable only if no `L-CORR-*` leads
+     were created on that pass. Verify via the row's
+     `new_L-CORR_count`. If a single-row history paired with
+     `new_L-CORR_count > 0` is present, flag as a premature exit.
+   - Grep `./analysis/forensic_audit.log` for
+     `[correlation] pathological-loop halt`. If present, surface the
+     halt event in `qa-review.md` along with the listed non-terminal
+     `L-CORR-*` leads and the `wave` number. This is informational —
+     the halt itself is a valid loop exit; the analyst needs to know
+     manual review is required for those leads.
 
 4. **Numerical reconciliation.** Build a table of every load-bearing
    number that appears in two or more case documents. For each:
@@ -175,6 +210,11 @@ Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
    - **Changes applied:** one row per `Edit`, with file:line and a
      one-line summary of what was wrong.
    - **Lead-status transitions:** every lead whose status you moved.
+   - **Correlation-loop convergence:** the last two rows of
+     `correlation-history.md` (timestamps + hashes), whether they
+     match (converged), and whether any pathological-loop halt
+     event is recorded in `forensic_audit.log`. Flag a missing
+     `correlation-history.md` as a discipline violation here.
    - **Numerical reconciliations:** the table from step 4 with
      authoritative values and the docs amended.
    - **Discipline issues:** integrity violations, missing markers,

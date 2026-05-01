@@ -174,13 +174,14 @@ listing what same-domain follow-ups were considered. The correlator
 must reject any "gap" that reads like missed Phase-3 surface and
 escalate it back as a re-run lead, not absorb it as `L-CORR-*`.**
 
-**Why:** Case7 wave-4 correlation surfaced six `L-CORR-*` leads, three
+**Why:** Case7's correlation pass surfaced six `L-CORR-*` leads, three
 of which (`L-CORR-02` per-stream Meterpreter outcome enumeration,
 `L-CORR-03` flag-harvester recovery, `L-CORR-06` parallel vs sequential
 delivery) were squarely investigator-domain Phase-3 questions. The
 investigators on the original leads answered the narrow hypothesis but
 did not enumerate the obvious adjacent surface; the correlator paid for
-that by running a second wave to fill the gap.
+that by triggering an additional Phase-3 investigation wave to fill the
+gap.
 
 **How to apply:**
 - Findings template gains a required field:
@@ -197,36 +198,46 @@ that by running a second wave to fill the gap.
   adjacent surface is rule-fire timing/clustering across all PCAPs.
 - The correlator: when constructing an `L-CORR-<NN>`, ask "should this
   have been a `-eNN`?" If yes, write the lead but flag it
-  `re-investigator-surface=true` so the orchestrator knows the wave-3
-  agents missed it.
+  `re-investigator-surface=true` so the orchestrator knows the prior
+  Phase-3 investigators missed it and routes it to a focused
+  investigation wave rather than absorbing it as correlation work.
 
 ---
 
 ## Rule B — Headline / table revalidation
-**(binds: dfir-correlator wave-2+)**
+**(binds: dfir-correlator on every iteration after the first)**
 
-**On any wave-2+ correlation pass, BEFORE rewriting the narrative, diff
-every `L-CORR-<NN>` audit-log entry produced after wave-1 against the
+**On any correlation pass where `./analysis/correlation.md` already
+exists, BEFORE rewriting the narrative, diff every `L-CORR-<NN>`
+audit-log entry produced since the prior correlation pass against the
 headline tables in `correlation.md`. Any timestamp, attribution,
 cluster boundary, or outcome the audit log corrected MUST be back-
 ported into the tables (Cluster table, Unified Timeline, Cross-Finding
-Matrix). Add an explicit "Wave-2 revalidation diff" subsection that
-lists each amended cell and the audit-log line that justifies it.**
+Matrix). Add an explicit "Since-last-correlation revalidation diff"
+subsection that lists each amended cell and the audit-log line that
+justifies it.**
 
 **Why:** Case7 audit log line 77 corrected Cluster C's exploit
-timestamp from `11:37:21.734` to `11:40:41`; the L-CORR-04 wave-4
-delta noted the correction in prose but did not back-port it into the
+timestamp from `11:37:21.734` to `11:40:41`; the L-CORR-04 delta
+noted the correction in prose but did not back-port it into the
 "Unified Attack Timeline" table at line 54 of `correlation.md`. The
 final report uses the corrected `11:40:41`, but a reader who consults
 `correlation.md` without scrolling to the delta gets the wrong time.
 Headline tables are load-bearing; they cannot lag the audit trail.
 
 **How to apply:**
-- For every `L-CORR-<NN>` entry the audit log produced after the wave-1
-  correlation timestamp, search the headline tables for the cells that
+- The diff is keyed off the prior `correlation.md`'s contents and the
+  audit log's timestamp ordering — the correlator does not need an
+  iteration-counter argument from the orchestrator. If `correlation.md`
+  is absent, this is the first pass and the rule does not apply.
+- For every `L-CORR-<NN>` entry the audit log produced after the prior
+  correlation pass's timestamp (read from
+  `./analysis/correlation-history.md` or the file mtime of
+  `correlation.md`), search the headline tables for the cells that
   match (timestamp, IP, host, hash, port). Rewrite the cell. Note the
-  rewrite in the new "Wave-2 revalidation diff" subsection at the top of
-  `correlation.md`, citing the audit-log line number.
+  rewrite in the new "Since-last-correlation revalidation diff"
+  subsection at the top of `correlation.md`, citing the audit-log line
+  number.
 - If a rewrite would break a downstream conclusion, that's a chain — the
   conclusion's narrative paragraph also needs an update, not just the
   table cell.
@@ -312,7 +323,8 @@ yields to operator input.** The intake interview is exempt from the
   `discipline_v1_loaded` is the self-attestation signal.
 - The PreToolUse / PostToolUse hooks enforce Rule A mechanically. Rules
   F / G / H / B are agent-prompt-level discipline; they are caught after
-  the fact by audit-log review and by the orchestrator's wave-2 logic.
+  the fact by audit-log review and by the orchestrator's correlation-
+  loop convergence guard (Phase 4).
 - Rules I and J are gate-enforced by `leads-check.sh` and
   `intake-check.sh`; the QA phase agent additionally has authority to
   apply remediation Edits in place.

@@ -9,8 +9,8 @@ model: opus
 acting; the four rules apply at every step. Your first audit-log entry of
 this invocation MUST include the marker `discipline_v1_loaded` in the
 result field. The orchestrator greps for it. Rules G (scope closure), H
-(don't absorb investigator surface), and B (wave-2+ table revalidation)
-bind THIS agent specifically.
+(don't absorb investigator surface), and B (since-last-correlation table
+revalidation) bind THIS agent specifically.
 
 You are the **correlation phase**. This is the case's core reasoning step:
 you ingest only structured findings (not raw tool output) and weave them into
@@ -81,16 +81,29 @@ Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
      grounded entirely in cited findings. Mark uncertainty explicitly.
    - **Open questions**: gaps the correlation exposed (e.g. process on host A
      with no matching disk artifact on host B).
-4.5. **DISCIPLINE rule B — wave-2+ table revalidation.** If this is wave-2
-   or later (the orchestrator passes `WAVE_NUMBER` in the prompt; if absent
-   assume wave-1), BEFORE rewriting the narrative, diff every
-   `L-CORR-<NN>` audit-log entry produced after the wave-1 correlation
-   timestamp against the headline tables already in `correlation.md`. Any
-   timestamp, attribution, cluster boundary, or outcome the audit log
-   corrected MUST be back-ported into the tables (Cluster table, Unified
-   Timeline, Cross-Finding Matrix). Add an explicit
-   `## Wave-N revalidation diff` subsection at the top of the file listing
-   each amended cell and the audit-log line that justifies it.
+4.5. **DISCIPLINE rule B — since-last-correlation table revalidation.** If
+   `./analysis/correlation.md` already exists (this is not the first
+   correlation pass for the case), BEFORE rewriting the narrative, compute
+   a since-last-correlation diff:
+   - Read the existing `correlation.md` to identify the prior pass's
+     headline tables (Cluster table, Unified Timeline, Cross-Finding
+     Matrix).
+   - Read `./analysis/correlation-history.md` (if present) to learn the
+     UTC timestamp of the prior pass; treat that timestamp as the
+     diff cutoff. If the file is absent, use the file mtime of the
+     prior `correlation.md` (or fall back to scanning the audit log
+     for the most recent `[correlation] wave` row).
+   - Diff every `L-CORR-<NN>` audit-log entry produced after the cutoff
+     against the prior headline tables. Any timestamp, attribution,
+     cluster boundary, or outcome the audit log corrected MUST be
+     back-ported into the tables. Add an explicit
+     `## Since-last-correlation revalidation diff` subsection at the top
+     of the file listing each amended cell and the audit-log line that
+     justifies it.
+
+   You do not need to know your iteration number to do this — the
+   diff is keyed off the prior `correlation.md`'s contents and the
+   audit log's timestamp ordering.
 5. For each open question, **apply DISCIPLINE rule G (scope closure
    discipline) first**: if the open question, resolved differently, would
    flip a headline assertion (cluster boundary, exploit success,
@@ -101,9 +114,16 @@ Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
    per-stream outcome enumeration, a yara rule's adjacent-PCAP coverage),
    write the `L-CORR-<NN>` lead but flag it
    `re-investigator-surface=true` so the orchestrator routes it back to a
-   focused Phase-3 wave rather than absorbing it as correlation work.
-   Lead IDs use the `L-CORR-<NN>` prefix — never collides with surveyor /
-   investigator IDs.
+   focused Phase-3 investigation wave rather than absorbing it as
+   correlation work. Lead IDs use the `L-CORR-<NN>` prefix — never
+   collides with surveyor / investigator IDs.
+
+   The orchestrator will dispatch a Phase 3 wave for any open
+   `L-CORR-*` leads you add, then re-invoke you. The correlation loop
+   exits when every `L-CORR-*` is terminal AND your output (the sha256
+   of `correlation.md`) matches the previous iteration. You do not
+   self-cap; the convergence guard is the orchestrator's
+   responsibility.
 6. Append to `forensic_audit.log` via `audit.sh` (DISCIPLINE rule A — never
    `>>` directly; the PreToolUse hook denies it). Your first entry MUST
    include `discipline_v1_loaded` in the result field.
