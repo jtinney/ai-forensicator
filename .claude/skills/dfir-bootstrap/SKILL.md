@@ -14,7 +14,7 @@ directly if the case prompt names one (e.g., "memory image" → memory-analysis,
 
 ## Overview
 Use this skill **at the start of every case**, before invoking any other DFIR skill.
-It does eight things:
+It does nine things:
 
 1. **Preflight** — inventories the SIFT instance's actually-available tools/libraries
    so the rest of the workflow doesn't burn calls discovering gaps mid-analysis. Now
@@ -63,6 +63,13 @@ It does eight things:
    for missing EZ Tools / regipy / python-evtx when those are absent. They
    cover the artifact types most cases actually pivot on (Recycle Bin,
    Prefetch, registry hive strings).
+9. **Offline MITRE ATT&CK reference + validator** — `reference/mitre-attack.tsv`
+   carries a curated subset of the enterprise matrix (id / tactic / name);
+   `mitre-validate.sh <findings.md>` greps the file for `MITRE:` lines, parses
+   T-numbers, and exits nonzero on any malformed shape or unknown ID.
+   `dfir-qa` runs it against every `analysis/<domain>/findings.md` (DISCIPLINE
+   rule K). The TSV is offline-only and analyst-extensible — append rows
+   when a real technique is missing rather than reaching for a vague parent.
 
 Shared discipline rules that bind every phase agent live in
 `.claude/skills/dfir-discipline/DISCIPLINE.md`. Each agent's prompt loads them

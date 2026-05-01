@@ -6,7 +6,7 @@ model: sonnet
 ---
 
 **MANDATORY:** read `.claude/skills/dfir-discipline/DISCIPLINE.md` before
-acting; the four rules apply at every step. Your first audit-log entry of
+acting; the rules apply at every step. Your first audit-log entry of
 this invocation MUST include the marker `discipline_v1_loaded` in the
 result field. The orchestrator greps for it.
 
@@ -71,7 +71,12 @@ them verbatim for output paths; load the matching skill by path.
    - `status` starts at `open`.
 7. Append one finding stub to `./analysis/<DOMAIN>/findings.md` (the baseline
    facts and anomaly count) — do NOT attempt to write per-lead findings here;
-   those come from the investigator phase.
+   those come from the investigator phase. The stub MAY carry an optional
+   `- **MITRE:** T####[, T####.###]` line (DISCIPLINE rule K) when a
+   surveyed anomaly maps obviously to a single technique (e.g. a Run-key
+   persistence row → `T1547.001`); leave the line off when the mapping is
+   ambiguous and let the investigator tag it. Cited IDs must validate
+   against `.claude/skills/dfir-bootstrap/reference/mitre-attack.tsv`.
 8. Append to `./analysis/forensic_audit.log` via `audit.sh`.
 
 ## Output (return to orchestrator, ≤250 words)

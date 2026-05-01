@@ -1,9 +1,9 @@
 # Skill: DFIR Discipline (shared rules across all phase agents)
 
-This skill is one file: [`DISCIPLINE.md`](./DISCIPLINE.md). It contains four
+This skill is one file: [`DISCIPLINE.md`](./DISCIPLINE.md). It contains the
 mandatory rules that every phase agent (`dfir-triage`, `dfir-surveyor`,
-`dfir-investigator`, `dfir-correlator`, `dfir-reporter`) must follow at every
-step.
+`dfir-investigator`, `dfir-correlator`, `dfir-reporter`, `dfir-qa`) must
+follow at every step.
 
 ## Why this skill exists
 
@@ -26,6 +26,11 @@ multiple phase agents:
   entries but did not back-port the corrections into the headline tables
   in `correlation.md`, leaving the report inconsistent with the audit
   trail.
+- **K** — findings described adversary behavior in free text only, so
+  technique coverage and per-tactic aggregation across evidence items had
+  to be reconstructed manually. Rule K introduces an OPTIONAL `MITRE:`
+  line on findings, validated against an offline TSV, and consumed by the
+  correlator + reporter.
 
 These rules apply across every agent. Codifying them in one file (instead of
 duplicating in five agent prompts) keeps the prompts short and the rules
@@ -36,7 +41,7 @@ versionable.
 Every phase-agent prompt opens with:
 
 > **MANDATORY:** read `.claude/skills/dfir-discipline/DISCIPLINE.md` before
-> acting; the four rules apply at every step. Your first audit-log entry of
+> acting; the rules apply at every step. Your first audit-log entry of
 > this invocation MUST include the marker `discipline_v1_loaded` in the
 > result field.
 
