@@ -147,6 +147,16 @@ fi
 # under ./analysis/_extracted/<basename>/ so analytic units (each member) can
 # be hashed and tracked individually. Idempotent: skips if dest non-empty.
 # Disk-bounded: skips if estimated expanded size > 50% of free disk.
+#
+# Issue #4 — BULK_EXTRACT gate. When triage's extraction-plan.sh returns
+# `mode: sequential` (combined decompressed estimate exceeds free disk), the
+# triage agent invokes us with BULK_EXTRACT=0; the bundle-expansion loop then
+# records the bundle's hash + a `bundle:<kind>` manifest row but skips the
+# unzip/tar/7z expansion and per-member hashing. The orchestrator drives
+# extract->survey->investigate->cleanup->next-stage cycles per the plan.
+# Default (unset/non-zero) preserves the legacy bulk-extract behaviour so
+# direct `case-init.sh` calls outside the orchestrator remain unchanged.
+BULK_EXTRACT="${BULK_EXTRACT:-1}"
 EVIDENCE_DIR="./evidence"
 EXTRACT_DIR="./analysis/_extracted"
 MANIFEST="./analysis/manifest.md"
@@ -256,6 +266,18 @@ if [[ -d "$EVIDENCE_DIR" ]]; then
             [[ "$dest_subdir" == *.tar ]] && dest_subdir="${dest_subdir%.tar}"
             dest="${EXTRACT_DIR}/${dest_subdir}"
             mkdir -p "$dest"
+
+            # Issue #4 BULK_EXTRACT=0 path. The extraction planner has decided
+            # the case runs sequentially (sum exceeds free disk). Record the
+            # bundle's intake hash + a deferred bundle row, but DO NOT expand
+            # or hash members. The orchestrator stages archives one at a time.
+            if [[ "$BULK_EXTRACT" == "0" ]]; then
+                append_manifest_row "$ev_id" "$bn" "$f" "bundle:${kind}" "$size" "$sha" "-" "expansion deferred (sequential mode per extraction-plan.md)"
+                bash "$AUDIT_SH" "case-init bundle-deferred" \
+                    "BULK_EXTRACT=0; recorded $ev_id ($bn) intake hash without expansion" \
+                    "orchestrator stages archive per extraction-plan.md" >/dev/null 2>&1 || true
+                continue
+            fi
 
             if [[ -z "$(ls -A "$dest" 2>/dev/null)" ]]; then
                 # Disk safety: skip if expanded size > 50% of free disk

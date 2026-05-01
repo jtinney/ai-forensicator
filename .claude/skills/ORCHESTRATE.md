@@ -61,6 +61,8 @@ and investigator write it on first append.)
 | Surveyor (phase 2) | `L-<EVIDENCE_ID>-<DOMAIN>-NN` | `L-EV01-memory-01` |
 | Investigator escalation (phase 3) | `L-<EVIDENCE_ID>-<DOMAIN>-eNN` | `L-EV01-memory-e01` |
 | Correlator gap (phase 4) | `L-CORR-NN` | `L-CORR-03` |
+| Correlator re-extraction (phase 4, sequential mode) | `L-EXTRACT-RE-NN` | `L-EXTRACT-RE-01` |
+| Bootstrap disk-pressure block (phase 1) | `L-EXTRACT-DISK-NN` | `L-EXTRACT-DISK-01` |
 
 Each prefix is globally unique per its source, so agents running in parallel
 never need shared locks to pick an ID. `NN` is zero-padded and counter-scoped
@@ -69,8 +71,20 @@ to the invocation that produced it.
 ## Dispatch protocol
 
 1. **Phase 1 — Triage** (blocking)
-   - Invoke `dfir-triage` with case ID and evidence path.
+   - Invoke `dfir-triage` with case ID and evidence path. Triage runs the
+     pre-extraction disk-space planner (`extraction-plan.sh`) before
+     `case-init.sh`; the resulting `./analysis/extraction-plan.md` decides
+     whether `case-init.sh` bulk-extracts everything (`BULK_EXTRACT=1`) or
+     defers to sequential staging.
    - On return, read `analysis/manifest.md` headers only (not full contents).
+   - Read the `Mode` field of `./analysis/extraction-plan.md`:
+     - `bulk` — proceed to Phase 2 normally.
+     - `sequential` — invoke the **Sequential extraction protocol** (below)
+       to drive Phases 2 / 3 stage-by-stage; do NOT fan out a single Phase 2
+       wave across all archives.
+     - `blocked` — surface the `L-EXTRACT-DISK-NN` lead (planner appended a
+       BLOCKED row to `leads.md`) and stop. Operator must free disk or
+       remount before any further phase runs.
 
 2. **Phase 2 — Survey** (parallel fan-out)
    - For each evidence item, pick applicable domains from its type:
@@ -85,6 +99,59 @@ to the invocation that produced it.
      saturate CPU/RAM when run concurrently. Complete each batch before
      starting the next; append leads as each batch returns.
    - On return, read `analysis/leads.md` for the lead queue.
+
+### Sequential extraction protocol (between Phase 2 and Phase 3 in `mode: sequential`)
+
+When `./analysis/extraction-plan.md` reports `mode: sequential`, archives
+exceed combined free disk but each fits alone. Triage staged stage 1
+(smallest archive). The orchestrator then drives the rest of the schedule
+per-archive, NOT in a single Phase 2 wave:
+
+For each stage `N` in the plan's stage table (`1..K`):
+
+1. **Extract** — if stage `N` is not yet on disk, run case-init's bundle
+   loop against just that one archive (e.g. by feeding a single-element
+   evidence subdir) or use the archive-specific extract logic the triage
+   agent ran for stage 1. The expanded tree lives at
+   `./analysis/_extracted/<basename>/`. Audit row:
+   `[disk] stage N: extract <archive>` via `bash audit.sh ...`.
+2. **Survey** — fan out Phase 2 (`dfir-surveyor`) only for `(stage-N
+   evidence × applicable domains)`. Other stages' archives are not yet
+   expanded; the surveyor must NOT touch them.
+3. **Investigate** — run a Phase 3 wave only on `leads.md` rows generated
+   by stage `N`'s surveys (lead IDs `L-<EVID-of-stage-N>-...`). Honor the
+   normal lead terminal-status invariant before advancing.
+4. **Cleanup** — once stage `N`'s investigators have settled, run:
+   ```bash
+   bash .claude/skills/dfir-bootstrap/extraction-cleanup.sh <basename-of-stage-N>
+   ```
+   This deletes only `./analysis/_extracted/<basename>/`. All
+   `./analysis/<domain>/` (findings, surveys, files-examined.tsv),
+   `./exports/**` (carved/dumped artifacts), `./analysis/manifest.md`
+   (chain-of-custody rows), and `./analysis/leads.md` are preserved. The
+   helper writes its own audit row; the orchestrator MUST also write
+   `[disk] stage N: cleanup <archive> deleted=<N> files` for the
+   stage-aware record.
+5. **Advance** — increment `N`. If `N <= K`, repeat from step 1. If `N >
+   K`, sequential staging is complete; proceed to Phase 4 (correlation).
+
+`L-EXTRACT-RE-NN` re-extraction leads (correlator-driven; see Phase 4
+below) trigger an additional sequential cycle: extract just the named
+archive (and, when the lead names a path subset, optionally only that
+subdir via `unzip <archive> "<subset>/*"` or a `tar --wildcards` filter
+into `./analysis/_extracted/<basename>/`), run a Phase 2/3 mini-wave
+scoped to the leads the re-extraction generates, then call
+`extraction-cleanup.sh` to release the bytes again.
+
+Audit-log convention for every stage transition:
+
+```
+[disk] stage <N>: extract <archive>
+[disk] stage <N>: cleanup <archive> deleted=<N> files
+```
+
+Both rows go through `bash .claude/skills/dfir-bootstrap/audit.sh`
+(DISCIPLINE rule A.1 — never `>>` directly).
 
 3. **Phase 3 — Investigate** (parallel waves)
    - Sort `leads.md` rows with `status=open` by `priority` (`high` first).
@@ -120,6 +187,14 @@ to the invocation that produced it.
    - If it appends new `L-CORR-*` leads (non-baseline), run one more
      investigation wave, then re-correlate. Hard stop after the second
      correlation pass.
+   - If it appends `L-EXTRACT-RE-NN` re-extraction leads (sequential mode
+     only), drive a focused Phase-2/3 mini-wave per the **Sequential
+     extraction protocol** above: re-stage the named archive (or named
+     path subset within it), run scoped surveyor + investigator(s), call
+     `extraction-cleanup.sh` to release the bytes, then re-correlate. The
+     correlator's `L-EXTRACT-RE-*` lead row names the archive + path
+     subset in its `hypothesis` field and points at the
+     `correlation.md` line that motivated the re-extraction.
 
 5. **Phase 5 — Report** (blocking)
    - Invoke `dfir-reporter` once. It produces two reports:
@@ -225,6 +300,8 @@ when the question is open-ended enough that multiple domains will be touched.
 | L-EV01-memory-01 | EV01 | memory | Unsigned DLL loaded by lsass.exe (PID 624) | analysis/memory/survey-EV01.md#L88-L94 | high | open |
 | L-EV01-memory-e01 | EV01 | memory | lsass DLL was loaded via reflective injection (escalation from L-EV01-memory-01) | analysis/memory/findings.md#L120 | high | open |
 | L-CORR-01 | — | cross | Timestamp gap between Prefetch run (12:03) and memory PID (13:47) needs filesystem pivot | analysis/correlation.md#L55 | high | open |
+| L-EXTRACT-RE-01 | EV04 | bootstrap | Re-extract `archive-3.zip` `Users/jsmith/AppData/Local/`; the SRUDB.dat hash from `correlation.md#L72` does not match the deferred-bundle row | analysis/correlation.md#L72 | high | open |
+| L-EXTRACT-DISK-01 | — | bootstrap | Disk-pressure block: evidence/Archives/big.zip requires 12GB; free 4GB | analysis/extraction-plan.md | high | blocked |
 ```
 
 - `pointer` MUST be line-anchored (`<file>#L<n>` or `<file>#L<n>-L<m>`). A

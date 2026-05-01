@@ -104,6 +104,41 @@ Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
    focused Phase-3 wave rather than absorbing it as correlation work.
    Lead IDs use the `L-CORR-<NN>` prefix — never collides with surveyor /
    investigator IDs.
+5a. **`L-EXTRACT-RE-<NN>` re-extraction leads (sequential mode only).**
+   When the case ran in sequential extraction mode (see
+   `./analysis/extraction-plan.md` `Mode: sequential`), the bytes for
+   each previously-staged archive have been cleaned out of
+   `./analysis/_extracted/`. If a correlation surfaces a question whose
+   answer requires re-examining a file you no longer have on disk
+   (member-hash mismatch, content review of a file that was not parsed
+   on its first pass, byte-level comparison across two cleared bundles),
+   you have authority to append an `L-EXTRACT-RE-<NN>` lead. Row format:
+
+   | field | value |
+   |---|---|
+   | `lead_id` | `L-EXTRACT-RE-<NN>` (NN counter-scoped to this invocation, zero-padded) |
+   | `evidence_id` | The `EVnn` of the archive to re-stage |
+   | `domain` | `bootstrap` |
+   | `hypothesis` | One sentence naming the archive + the path subset to re-extract (e.g. `Re-extract \`archive-3.zip\` \`Users/jsmith/AppData/Local/\`; SRUDB.dat hash mismatch in correlation.md#L72`). When the whole archive is needed, say so explicitly. |
+   | `pointer` | `analysis/correlation.md#L<line>` of the entry that motivated it |
+   | `priority` | `high` |
+   | `status` | `open` |
+   | `notes` | Optional — e.g. `re-investigator-surface=false` (this is NOT a missed Phase-3 surface; the bytes are physically absent) |
+
+   Limit `L-EXTRACT-RE-<NN>` to cases where the question genuinely
+   requires bytes that are not on disk. If the question is answerable
+   from `./analysis/<domain>/` outputs or already-extracted artifacts in
+   `./exports/**`, use `L-CORR-<NN>` instead. The orchestrator picks up
+   `L-EXTRACT-RE-*` leads as a Phase-2/3 mini-wave per the Sequential
+   extraction protocol in `ORCHESTRATE.md` (re-stage → survey →
+   investigate → cleanup → re-correlate). Do NOT emit
+   `L-EXTRACT-RE-<NN>` in `mode: bulk`; the bytes are still on disk and
+   a normal `L-CORR-<NN>` is the right tool.
+
+   **Existing-row prohibition still applies.** The correlator may APPEND
+   `L-EXTRACT-RE-*` rows; it must not modify or re-status existing rows
+   (Phase 6 / dfir-qa is the only agent with edit authority on settled
+   rows).
 6. Append to `forensic_audit.log` via `audit.sh` (DISCIPLINE rule A — never
    `>>` directly; the PreToolUse hook denies it). Your first entry MUST
    include `discipline_v1_loaded` in the result field.
