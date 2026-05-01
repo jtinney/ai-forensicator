@@ -22,9 +22,10 @@ multiple phase agents:
 - **H** — investigators answered the lead's exact hypothesis but did not
   exhaust the same-domain natural follow-up surface, deferring obvious
   Phase-3 work to Phase 4 correlator gaps.
-- **B** — wave-2 correlator amended findings via audit-log entries but did
-  not back-port the corrections into the headline tables in
-  `correlation.md`, leaving the report inconsistent with the audit trail.
+- **B** — a later correlation pass amended findings via audit-log
+  entries but did not back-port the corrections into the headline tables
+  in `correlation.md`, leaving the report inconsistent with the audit
+  trail.
 
 These rules apply across every agent. Codifying them in one file (instead of
 duplicating in five agent prompts) keeps the prompts short and the rules
