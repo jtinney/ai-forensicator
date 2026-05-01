@@ -84,6 +84,24 @@ to the invocation that produced it.
      **≤ 2** per batch — Zeek and Suricata are full-pcap replay tools and
      saturate CPU/RAM when run concurrently. Complete each batch before
      starting the next; append leads as each batch returns.
+   - **Survey-lint gate (per surveyor return).** After each surveyor
+     reports back, run:
+     ```bash
+     bash .claude/skills/dfir-bootstrap/lint-survey.sh \
+         ./analysis/<DOMAIN>/survey-EV<NN>.md
+     ```
+     Exit 0 = the survey is structurally compliant with the canonical
+     template (`.claude/skills/dfir-discipline/templates/survey-template.md`).
+     Nonzero = the lint printed `ERR:` lines describing each violation
+     (missing section, malformed lead ID, unfilled `<placeholder>`,
+     missing evidence sha256, etc.). On a nonzero exit, **block Phase 3
+     dispatch for that (evidence × domain) pair** and either:
+     1. re-dispatch the same surveyor with the lint output included so it
+        can fix in place, or
+     2. surface to the user as `SURVEY-LINT-FAIL: <pair>` if a re-run
+        cannot resolve the violation.
+     A passing lint is a precondition for any Phase-3 lead dispatch off
+     that survey.
    - On return, read `analysis/leads.md` for the lead queue.
 
 3. **Phase 3 — Investigate** (parallel waves)

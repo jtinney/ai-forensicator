@@ -1,9 +1,24 @@
 # Skill: DFIR Discipline (shared rules across all phase agents)
 
-This skill is one file: [`DISCIPLINE.md`](./DISCIPLINE.md). It contains four
-mandatory rules that every phase agent (`dfir-triage`, `dfir-surveyor`,
-`dfir-investigator`, `dfir-correlator`, `dfir-reporter`) must follow at every
-step.
+This skill is two parts:
+
+- [`DISCIPLINE.md`](./DISCIPLINE.md) — the mandatory rules every phase
+  agent (`dfir-triage`, `dfir-surveyor`, `dfir-investigator`,
+  `dfir-correlator`, `dfir-reporter`, `dfir-qa`) must follow at every
+  step.
+- [`templates/`](./templates/) — canonical document skeletons each phase
+  agent should instantiate when producing structured output. See
+  [`templates/INVENTORY.md`](./templates/INVENTORY.md) for the full map of
+  output types, which have templates, which rely on inline-in-agent specs,
+  and which are mechanically enforced. Today this directory contains:
+  - [`templates/survey-template.md`](./templates/survey-template.md) —
+    Phase-2 surveyor output; lint enforced by
+    `.claude/skills/dfir-bootstrap/lint-survey.sh`.
+  - Seven worked `reference/example-survey.md` files under each domain
+    skill (`windows-artifacts`, `network-forensics`, `memory-analysis`,
+    `plaso-timeline`, `sleuthkit`, `yara-hunting`, `sigma-hunting`) that
+    demonstrate the template populated for a realistic synthetic
+    evidence item.
 
 ## Why this skill exists
 
