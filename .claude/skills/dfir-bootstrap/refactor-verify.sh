@@ -22,7 +22,7 @@ emit() { printf '%-70s %s\n' "$1" "$2"; }
 # ---- 1. Discipline marker ----
 SELF="$(basename "$0")"
 markers=$(grep -rn "discipline_v" .claude/ CLAUDE.md ARCHITECTURE.md README.md VALIDATION.md 2>/dev/null \
-          | grep -v "$SELF" | grep -c "discipline_v2_loaded" || true)
+          | grep -v "$SELF" | grep -c "discipline_v3_loaded" || true)
 v1_remaining=$(grep -rn "discipline_v1_loaded" .claude/ CLAUDE.md ARCHITECTURE.md README.md VALIDATION.md 2>/dev/null \
                | grep -v "$SELF" | wc -l)
 if [[ "$markers" -gt 0 && "$v1_remaining" -eq 0 ]]; then
@@ -98,12 +98,12 @@ else
 fi
 
 # ---- 8. New policy rules in DISCIPLINE.md ----
-policies=$(grep -cE '^<rule id="P-(pcap|diskimage|tools|yara)"' \
+policies=$(grep -cE '^<rule id="P-(pcap|diskimage|priority|yara|sigma)"' \
            .claude/skills/dfir-discipline/DISCIPLINE.md 2>/dev/null)
-if [[ "$policies" -eq 4 ]]; then
-    emit "8. DISCIPLINE.md policy rules (4 / 4)" "PASS"
+if [[ "$policies" -eq 5 ]]; then
+    emit "8. DISCIPLINE.md policy rules (5 / 5)" "PASS"
 else
-    emit "8. DISCIPLINE.md policy rules ($policies / 4)" "FAIL"
+    emit "8. DISCIPLINE.md policy rules ($policies / 5)" "FAIL"
     fails=$((fails+1))
 fi
 

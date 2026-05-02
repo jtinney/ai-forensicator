@@ -5,7 +5,7 @@ tools: Bash, Read, Write, Edit, Glob, Grep
 model: sonnet
 ---
 
-<mandatory>Read `.claude/skills/dfir-discipline/DISCIPLINE.md` before acting. Your first audit-log entry of this invocation MUST contain `discipline_v2_loaded` in the result field.</mandatory>
+<mandatory>Read `.claude/skills/dfir-discipline/DISCIPLINE.md` before acting. Your first audit-log entry of this invocation MUST contain `discipline_v3_loaded` in the result field.</mandatory>
 
 <role>Investigation phase: take one lead, confirm / refute / escalate / block it. No surveying, no reporting.</role>
 
@@ -29,8 +29,8 @@ model: sonnet
 
 <step n="5">Cheapest-disconfirmation-first per <rule ref="DISCIPLINE §F"/>. Before any deep parse, list 2–3 cheapest disconfirmation queries (each under 60s wall-clock, drawing on already-generated baseline artifacts where present — Zeek `conn.log`, Suricata `eve.json`, `capinfos`, `pinfo.json` metadata). Run the cheapest first. If a cheap query refutes the hypothesis, set `status=refuted` and STOP. RE / disassembly / >100K-frame scans are permitted only AFTER the cheap layer returns a non-refutation. Document the list in the findings entry under `**Cheapest disconfirmation queries (in order):**`.</step>
 
-<step n="6">Run targeted tool passes from the skill's tool-selection table. Prefer narrow queries (specific event IDs, specific paths, specific process PIDs) over bulk dumps.
-- **Network-domain leads**: read the surveyor's pre-computed `./analysis/network/flow-index.csv` and the matching slice pcap (`./exports/network/slices/{dns,http,tls}.pcap`) BEFORE re-running anything against the original `./evidence/*.pcap`. Slices answer most "is X in here?" questions in seconds. Fall back to the original pcap only when the lead requires byte-level evidence the slice does not preserve (specific stream contents outside the slice's BPF, file carving, raw bytes). PCAP work obeys <rule ref="DISCIPLINE §P-pcap"/>; YARA work obeys <rule ref="DISCIPLINE §P-yara"/>.</step>
+<step n="6">Run targeted tool passes per <rule ref="DISCIPLINE §P-priority"/>. Descend the domain's tool list in numeric order — pick the lowest-`n` tool that answers the question. Skipping a rank requires an `audit.sh` row (`skip n=<N> reason=<one-liner>`). Prefer narrow queries (specific event IDs, paths, PIDs) over bulk dumps.
+- **Network-domain leads**: read the surveyor's pre-computed `./analysis/network/flow-index.csv` and the matching slice pcap (`./exports/network/slices/{dns,http,tls}.pcap`) BEFORE re-running anything against the original `./evidence/*.pcap`. Slices answer most "is X in here?" questions in seconds. Fall back to the original pcap only when the lead requires byte-level evidence the slice does not preserve (specific stream contents outside the slice's BPF, file carving, raw bytes). YARA work reads from `/opt/yara-rules/` per <rule ref="DISCIPLINE §P-yara"/>; Sigma from `/opt/sigma-rules/` per <rule ref="DISCIPLINE §P-sigma"/>.</step>
 
 <step n="7">Exhaust the lead's surface per <rule ref="DISCIPLINE §H"/>. Populate the findings entry's `Adjacent surface checked` field with each adjacent-surface question and its disposition (answered / escalated as `-eNN` / out of domain).</step>
 
@@ -38,7 +38,7 @@ model: sonnet
 - **confirmed** — cite the artifacts (path + line/row) that prove it. Set `status=confirmed` in `leads.md`.
 - **refuted** — cite the evidence that contradicts it. Set `status=refuted`.
 - **escalated** — set `status=escalated` on the current lead AND append a new lead row with the narrower hypothesis (priority `high`, status `open`). Escalation lead ID format: `L-<EVIDENCE_ID>-<DOMAIN>-e<NN>` where the `e` prefix marks it as an investigator escalation (parallel investigators never collide on IDs). Example: `L-EV01-memory-e01`.
-- **blocked** — when an existing tool cannot answer the lead, set `status=blocked` per <rule ref="DISCIPLINE §P-tools"/>. The lead's `notes` field MUST contain `suggested-fix=<verb>; tool-needed=<thing>` (e.g. `suggested-fix=add-rule; tool-needed=yara-rule-for-XYZ`, `suggested-fix=add-parser; tool-needed=parser-for-MFT-extension-attribute`). Do NOT reach for an alternate tool — the QA aggregation step needs structured BLOCKED rows to plan tooling work.</step>
+- **blocked** — when the next required tool in <rule ref="DISCIPLINE §P-priority"/> is absent, set `status=blocked`. The lead's `notes` field MUST contain `suggested-fix=<verb>; tool-needed=<thing>` (e.g. `suggested-fix=install-package; tool-needed=apfs-fuse`, `suggested-fix=add-rule; tool-needed=yara-rule-for-XYZ`). Do NOT reach for an unranked alternative — the QA aggregation step needs structured BLOCKED rows to plan tooling work.</step>
 
 <step n="9">Append the findings entry to `./analysis/<domain>/findings.md` using this template:
 ```
@@ -66,9 +66,9 @@ The `MITRE:` line is omitted when the mapping is unclear. When present, every ci
 <rule ref="DISCIPLINE §F"/> — hypothesis-first / cheapest-disconfirmation-first
 <rule ref="DISCIPLINE §H"/> — exhaust the lead's surface
 <rule ref="DISCIPLINE §K"/> — MITRE ATT&CK tagging (validated)
-<rule ref="DISCIPLINE §P-pcap"/> — Zeek-only PCAP parsing
+<rule ref="DISCIPLINE §P-priority"/> — descend the domain tool list in numeric order; BLOCKED-lead path with `suggested-fix=` / `tool-needed=` notes when the next required tool is absent
 <rule ref="DISCIPLINE §P-yara"/> — YARA rules at `/opt/yara-rules/`
-<rule ref="DISCIPLINE §P-tools"/> — BLOCKED-lead path with `suggested-fix=` / `tool-needed=` notes
+<rule ref="DISCIPLINE §P-sigma"/> — Sigma rules at `/opt/sigma-rules/`
 </rules-binding>
 
 <outputs>

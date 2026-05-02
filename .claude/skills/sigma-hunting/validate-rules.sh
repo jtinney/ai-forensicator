@@ -8,7 +8,8 @@
 #   bash validate-rules.sh [--strict] [PATH ...]
 #
 #   PATH       File or directory of Sigma .yml rules. Defaults to
-#              `.claude/skills/sigma-hunting/rules/local/`.
+#              `/opt/sigma-rules/sigma/` (the project's canonical Sigma
+#              corpus per DISCIPLINE.md Rule P-sigma).
 #   --strict   Treat the recommended (but optional) keys `references`
 #              and `tags` as required.
 #
@@ -20,7 +21,7 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEFAULT_TARGET="$SCRIPT_DIR/rules/local"
+DEFAULT_TARGET="/opt/sigma-rules/sigma"
 
 REQUIRED_KEYS=(title id description author date level logsource detection)
 STRICT_EXTRA_KEYS=(references tags)

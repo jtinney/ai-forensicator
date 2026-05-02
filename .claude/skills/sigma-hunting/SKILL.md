@@ -1,5 +1,12 @@
 # Skill: Sigma / EVTX Hunting (Chainsaw + Hayabusa)
 
+<protocol>
+  <rule>Rules + mappings live at <code>/opt/sigma-rules/</code>. See DISCIPLINE.md §P-sigma.</rule>
+  <rule>Tool order is the <code>sigma-hunting</code> entry of DISCIPLINE.md §P-priority. Surveyor runs <code>chainsaw hunt --sigma /opt/sigma-rules/sigma --mapping /opt/sigma-rules/mappings/sigma-event-logs-all.yml --csv -o ./analysis/sigma/&lt;EVID&gt;/ &lt;evtx_dir&gt;</code>.</rule>
+  <rule>Hits go to <code>./analysis/sigma/&lt;EVID&gt;/</code> (CSVs). Matched-event byte extracts go to <code>./exports/sigma_hits/&lt;EVID&gt;/&lt;rule_id&gt;/</code>.</rule>
+  <rule>Do not author, cache, or vendor rules inside the project workspace. Operator maintains <code>/opt/sigma-rules/</code> via the SIFT install script.</rule>
+</protocol>
+
 ## Use this skill when
 
 - You have a corpus of Windows `.evtx` files (host-collected event logs,
@@ -84,17 +91,13 @@ before invoking.
 
 ## Rule library layout
 
-The skill rule library is namespace-partitioned identically to
-`yara-hunting/`:
-
 ```
-.claude/skills/sigma-hunting/rules/
-├── local/        — project-vetted, in-house Sigma rules (tracked in git)
-├── vendor/       — third-party upstream sets, populated by vendor-rules.sh
-│                   (gitignored — license terms vary)
-└── quarantine/   — disabled rules (FP / scope problems) — kept for history
-.claude/skills/sigma-hunting/mappings/
-└── *.yml         — Chainsaw field-mapping files (sigma → EVTX field names)
+/opt/sigma-rules/                  ← canonical rule corpus (operator-maintained, populated by SIFT install)
+├── sigma/                         ← Sigma .yml rules (SigmaHQ + project-authored)
+├── chainsaw/                      ← Chainsaw bundled rules (richer than Sigma — aggregations, on-disk groupings)
+├── hayabusa/                      ← Hayabusa rule packs
+└── mappings/                      ← Chainsaw field-mapping YAMLs (sigma → EVTX field names)
+                                       e.g. sigma-event-logs-all.yml, sigma-event-logs-windows.yml, chainsaw.yml
 ```
 
 **Per-case output routing.** Sigma hunting produces two classes of output;
@@ -108,11 +111,9 @@ from the source EVTX corpus by re-running Chainsaw / Hayabusa. NOT
 fingerprinted (the source of truth is `./evidence/`):
 
 ```
-./analysis/sigma/                          ← per-case rules + scan output
-./analysis/sigma/rules-EV01.yml            ← case-local rules (one or many)
-./analysis/sigma/hits-EV01/                ← chainsaw CSV output (one CSV
-                                             per rule that fired + Hits.csv)
-./analysis/sigma/hits-EV01/Hits.jsonl      ← chainsaw --jsonl summary (when used)
+./analysis/sigma/                          ← per-case scan output (layer 3)
+./analysis/sigma/EV01/                     ← chainsaw CSV output (one CSV per rule that fired + Hits.csv)
+./analysis/sigma/EV01/Hits.jsonl           ← chainsaw --jsonl summary (when used)
 ./analysis/sigma/hayabusa-timeline-EV01.csv ← hayabusa csv-timeline output
 ./analysis/sigma/survey-EV01.md            ← surveyor write-up per evidence item
 ./analysis/sigma/findings.md               ← consolidated investigator findings
@@ -145,12 +146,13 @@ post-processing the summary's `record_id` + `channel` columns through
 
 ---
 
-## Rule conventions (mandatory for `rules/local/`)
+## Rule conventions
 
-Every rule in `rules/local/` and every case-local rule under
-`./analysis/sigma/` MUST conform to this convention. The linter
-(`validate-rules.sh`, see below) enforces required keys and runs
-`chainsaw lint` to confirm syntax.
+Every rule under `/opt/sigma-rules/sigma/` MUST conform to this convention.
+The linter (`validate-rules.sh`, see below) defaults to that path; it
+enforces required keys and runs `chainsaw lint` to confirm syntax. Rule
+authoring and curation happen out-of-band — the operator maintains
+`/opt/sigma-rules/` via the SIFT install script.
 
 ### Required Sigma keys
 
@@ -180,10 +182,9 @@ Every rule in `rules/local/` and every case-local rule under
 
 - `title` should be specific enough to search for. Avoid generic titles
   like "Suspicious Process" — name the technique.
-- File names follow `<provenance>-<area>.yml`:
-  - `local/win-process-creation.yml`, `local/win-network-connection.yml`,
-    `local/win-account-mgmt.yml`
-  - One file may contain multiple `---`-separated rules
+- File names follow `<area>.yml` (e.g. `win-process-creation.yml`,
+  `win-network-connection.yml`, `win-account-mgmt.yml`). One file may
+  contain multiple `---`-separated rules.
 
 ### Tag vocabulary
 
@@ -201,12 +202,14 @@ Mirror Sigma's official tag namespace:
 
 ## Rule validation (`validate-rules.sh`)
 
+Default target is `/opt/sigma-rules/sigma/`.
+
 ```bash
-# Lint every rule in rules/local/
+# Lint every rule under /opt/sigma-rules/sigma/
 bash .claude/skills/sigma-hunting/validate-rules.sh
 
-# Lint case-local rules
-bash .claude/skills/sigma-hunting/validate-rules.sh ./analysis/sigma/
+# Lint a specific subset
+bash .claude/skills/sigma-hunting/validate-rules.sh /opt/sigma-rules/sigma/rules-threat-hunting/
 
 # Strict mode — also requires `references` and `tags`
 bash .claude/skills/sigma-hunting/validate-rules.sh --strict
@@ -224,118 +227,57 @@ Exit 0 on clean, 1 on errors, 2 on bad invocation.
 
 ---
 
-## Vendoring upstream rule sets (`vendor-rules.sh`)
-
-```bash
-# Default: SigmaHQ + Chainsaw bundled rules + Chainsaw mapping files
-bash .claude/skills/sigma-hunting/vendor-rules.sh
-
-# List configured sources, refs, licenses
-bash .claude/skills/sigma-hunting/vendor-rules.sh --list
-
-# Verify on-disk archives match manifest (run on the SIFT side)
-bash .claude/skills/sigma-hunting/vendor-rules.sh --verify-only
-```
-
-### Reputable upstream sources
-
-| Source | License | Notes |
-|---|---|---|
-| **SigmaHQ / sigma**       | DRL 1.1 | Core community rule pack — thousands of rules, broad coverage. Pull `rules/`, `rules-emerging-threats/`, `rules-threat-hunting/` |
-| **WithSecureLabs / chainsaw** | MIT | Bundles its own rule format (richer than Sigma) + the canonical Chainsaw mapping files. We pull `rules/` AND `mappings/` from this repo. |
-| **Yamato-Security / hayabusa-rules** | DRL 1.1 | Hayabusa's curated Sigma + extensions, IR-triage focused |
-| **Florian Roth — `sigma-rules`** | DRL 1.1 | Roth's curated subset (Auditing & Threat Hunting) — aliased into SigmaHQ but worth pulling when you want his version |
-| **Mandiant / Volexity / SentinelLabs** | Per-report | Narrow, high-confidence — promote into local/ when used |
-
-The fetch writes `rules/vendor/vendor-manifest.json` recording every
-archive's source, ref, SHA256, license, and pull timestamp.
-
-### License compliance
-
-DRL-1.1 (Detection Rule License) — preserve attribution and license
-header. MIT — preserve copyright. Do NOT relicense vendored rules when
-promoting them to `rules/local/` — keep the `references:` field pointing
-at the upstream source so the chain is auditable.
-
----
-
 ## Mapping files (Chainsaw)
 
 Chainsaw needs a field-mapping file to translate Sigma's generic field
-names (`Image`, `CommandLine`, `User`) to the EVTX-specific schema. The
-canonical mappings ship with Chainsaw under `mappings/`:
+names (`Image`, `CommandLine`, `User`) to the EVTX-specific schema.
+Mappings live alongside the rules at `/opt/sigma-rules/mappings/`:
 
 - `sigma-event-logs-all.yml` — broadest coverage; default
 - `sigma-event-logs-windows.yml` — Windows-specific
 - `chainsaw.yml` — for Chainsaw's own rule format
 
-`vendor-rules.sh` copies these into `.claude/skills/sigma-hunting/mappings/`.
-
 ---
 
 ## Rule enumeration gate (run BEFORE any scan)
 
-Before any `chainsaw hunt` or `hayabusa` invocation in this case, you MUST
-enumerate the rule library and record what is actually available.
+Before any `chainsaw hunt` or `hayabusa` invocation, enumerate the rule
+corpus at `/opt/sigma-rules/` so the audit trail records exactly what was
+available at scan time. If the directory is missing or empty, preflight
+reports `sigma-hunting: RED/YELLOW`; the surveyor BLOCKS its lead per
+§P-priority with `suggested-fix=install-package; tool-needed=/opt/sigma-rules`.
 
 ```bash
 mkdir -p ./analysis/sigma
 
 {
     echo "# Sigma rule enumeration — $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-    echo
-
-    for ns in local vendor quarantine; do
-        nsdir=".claude/skills/sigma-hunting/rules/$ns"
-        echo "## namespace: $ns"
-        if [[ -d "$nsdir" ]]; then
-            ls -la "$nsdir"
-            find "$nsdir" \( -name '*.yml' -o -name '*.yaml' \) \
-                | wc -l \
-                | xargs -I{} echo "  rule files: {}"
-        else
-            echo "(directory missing)"
-        fi
-        echo
-    done
-
-    echo "## case-local rules under ./analysis/sigma/"
-    if compgen -G './analysis/sigma/*.yml' >/dev/null \
-       || compgen -G './analysis/sigma/*.yaml' >/dev/null; then
-        ls -la ./analysis/sigma/*.yml ./analysis/sigma/*.yaml 2>/dev/null
+    echo "## corpus root: /opt/sigma-rules/"
+    if [[ -d /opt/sigma-rules ]]; then
+        for sub in sigma chainsaw hayabusa mappings; do
+            echo
+            echo "### /opt/sigma-rules/${sub}/"
+            if [[ -d "/opt/sigma-rules/${sub}" ]]; then
+                find "/opt/sigma-rules/${sub}" -type f \( -name '*.yml' -o -name '*.yaml' \) | wc -l \
+                    | xargs -I{} echo "  rule/mapping files: {}"
+            else
+                echo "(missing)"
+            fi
+        done
     else
-        echo "(none)"
-    fi
-
-    echo
-    echo "## mappings"
-    ls -la .claude/skills/sigma-hunting/mappings/
-
-    echo
-    echo "## vendor manifest"
-    if [[ -f .claude/skills/sigma-hunting/rules/vendor/vendor-manifest.json ]]; then
-        cat .claude/skills/sigma-hunting/rules/vendor/vendor-manifest.json
-    else
-        echo "(no vendored sets pulled — see vendor-rules.sh)"
+        echo "(missing — preflight RED)"
     fi
 } > ./analysis/sigma/rules-enumerated.txt
 
 bash .claude/skills/sigma-hunting/validate-rules.sh \
-    .claude/skills/sigma-hunting/rules/local/ \
-    ./analysis/sigma/ \
     > ./analysis/sigma/validate-rules.txt 2>&1 \
     || echo "WARN: validate-rules.sh reported errors — see analysis/sigma/validate-rules.txt"
 
 bash .claude/skills/dfir-bootstrap/audit.sh \
-    "sigma-rule-enumeration" \
-    "enumerated local/vendor/quarantine + case-local rules — see analysis/sigma/rules-enumerated.txt" \
-    "select namespaces in scope; pick mapping; chainsaw hunt"
+    "sigma-rule-enumeration /opt/sigma-rules/" \
+    "enumerated $(wc -l < ./analysis/sigma/rules-enumerated.txt) lines — see analysis/sigma/rules-enumerated.txt" \
+    "pick rule scope + mapping; chainsaw hunt"
 ```
-
-**Namespace discipline.** Default scans load `rules/local/` (always
-reusable). Vendored sets under `rules/vendor/<source>/` are loaded
-explicitly. `rules/quarantine/` is NEVER loaded by default. Case-local
-rules under `./analysis/sigma/` are scoped to the current evidence set.
 
 ---
 
@@ -366,11 +308,10 @@ land under `./exports/sigma_hits/<EVID>/<rule_id>/` (layer 4).
 
 ```bash
 chainsaw hunt /path/to/evtx \
-    -s .claude/skills/sigma-hunting/rules/local/ \
-    -s .claude/skills/sigma-hunting/rules/vendor/sigmahq/rules-threat-hunting/ \
-    --mapping .claude/skills/sigma-hunting/mappings/sigma-event-logs-all.yml \
+    -s /opt/sigma-rules/sigma/ \
+    --mapping /opt/sigma-rules/mappings/sigma-event-logs-all.yml \
     --csv \
-    -o ./analysis/sigma/hits-EV01/
+    -o ./analysis/sigma/EV01/
 ```
 
 Chainsaw writes one CSV per Sigma rule that produced any hit, plus a
@@ -386,9 +327,9 @@ for incident response:
 
 ```bash
 chainsaw hunt /path/to/evtx \
-    -r .claude/skills/sigma-hunting/rules/vendor/chainsaw/rules/ \
+    -r /opt/sigma-rules/chainsaw/ \
     --csv \
-    -o ./analysis/sigma/hits-EV01-chainsaw/
+    -o ./analysis/sigma/EV01-chainsaw/
 ```
 
 ### 4. Hayabusa one-shot triage timeline
@@ -468,8 +409,7 @@ runs first in the next investigator wave.
 <!-- baseline-artifacts:start -->
 required: analysis/sigma/rules-enumerated.txt
 required: analysis/sigma/validate-rules.txt
-optional: analysis/sigma/rules-EV01.yml
-optional: analysis/sigma/hits-EV01/Hits.csv
+optional: analysis/sigma/EV01/Hits.csv
 optional: analysis/sigma/hayabusa-timeline-EV01.csv
 optional: analysis/sigma/survey-EV01.md
 optional: exports/sigma_hits/EV01/
@@ -492,6 +432,6 @@ optional: exports/sigma_hits/EV01/
 ## Velociraptor cross-reference
 
 Velociraptor's `Windows.EventLogs.EvtxHunter` artifact accepts Sigma rules
-directly via the `Rules` parameter. Promoting a `rules/local/` rule into a
-Velociraptor hunt is a copy-paste — keep `references:` pointing back at
-the project file so the chain is auditable.
+directly via the `Rules` parameter. Promoting a `/opt/sigma-rules/sigma/`
+rule into a Velociraptor hunt is a copy-paste — keep `references:`
+pointing back at the source so the chain is auditable.

@@ -19,12 +19,12 @@ These rules apply at every step of every phase agent (`dfir-triage`,
 
   Examples:
 
-    2026-05-02 14:12:33 UTC | dfir-triage start | discipline_v2_loaded; 4 evidence items EV01..EV04 | dispatch surveyors per ORCHESTRATE Phase 2
+    2026-05-02 14:12:33 UTC | dfir-triage start | discipline_v3_loaded; 4 evidence items EV01..EV04 | dispatch surveyors per ORCHESTRATE Phase 2
     2026-05-02 14:18:07 UTC | fls -r -o 65664 EV01.E01 | 11553 entries; NTFS at offset 65664 | feed mactime; pivot logon timestamps in survey-EV01.md
 </audit-log-format>
 
 <marker-self-attestation>
-  Every agent invocation emits the literal marker `discipline_v2_loaded` in
+  Every agent invocation emits the literal marker `discipline_v3_loaded` in
   the `result` field of its first audit row. The orchestrator and dfir-qa
   grep for it. A missing marker is a self-attestation failure recorded by
   dfir-qa as `INTEGRITY-VIOLATION: missing discipline marker`.
@@ -55,8 +55,9 @@ These rules apply at every step of every phase agent (`dfir-triage`,
   | multi-evidence path encoding  | Rule L           |
   | PCAP analysis                 | Rule P-pcap      |
   | disk-image format             | Rule P-diskimage |
-  | new-tool prohibition          | Rule P-tools     |
+  | tool priority + traversal     | Rule P-priority  |
   | YARA rules location           | Rule P-yara      |
+  | Sigma rules location          | Rule P-sigma     |
 </index>
 
 ---
@@ -79,7 +80,7 @@ wall-clock) times will not survive cross-examination.
 
 **How to apply:**
 - The first audit-log entry of every agent invocation MUST include
-  `discipline_v2_loaded` somewhere in the `result` field. The orchestrator
+  `discipline_v3_loaded` somewhere in the `result` field. The orchestrator
   will grep for this marker.
 - Never `echo "<UTC>" >> ./analysis/forensic_audit.log` or
   `tee -a ./analysis/forensic_audit.log`. The PreToolUse hook denies
@@ -545,43 +546,31 @@ itself emits a tree we don't control.
 ---
 
 <rule id="P-pcap" binds="dfir-surveyor,dfir-investigator">
-  <name>PCAP analysis is Zeek-only</name>
+  <name>PCAP analysis follows the network priority list</name>
   <statement>
-    Every PCAP / pcapng / cap evidence item is processed with Zeek.
-    Inventorying the capture (capinfos, file-magic detection, packet
-    count) is permitted as a pre-Zeek triage step. No other PCAP
-    analysis tool is invoked.
+    PCAP / pcapng / cap evidence is processed in the order defined by
+    Rule P-priority for `domain="network-forensics"`. Surveyor runs the
+    `tier="survey"` tools (capinfos, zeek). Investigator / correlator /
+    QA descend the priority list in numeric order as questions escalate.
   </statement>
   <why>
-    Zeek's connection logs and protocol parsers are the canonical
-    surface for network forensics in this project. Parallel tools
-    against the same wire data produce duplicate findings and
-    correlation-time conflicts when classifications disagree.
-    Single-tool processing eliminates that conflict class.
+    A single ordered list eliminates per-skill tier hierarchies, makes
+    "what comes next?" deterministic, and lets the audit log show
+    exactly which tools touched each capture in what order.
   </why>
   <how>
-    - Surveyor invokes Zeek against each PCAP and writes outputs under
-      `./analysis/network/zeek/`.
-    - Inventory step: `capinfos -A <pcap> > ./analysis/network/<EVID>-capinfos.txt`.
-    - Tools that MUST NOT be invoked on PCAPs: tshark dissection,
-      Suricata, Wireshark, ngrep, tcpdump replay parsing, p0f, RITA,
-      Brim. Reading existing outputs from these tools (when present
-      in `./analysis/`) is permitted; generating new ones is not.
-    - When Zeek cannot answer a PCAP question, mark the lead BLOCKED
-      per Rule P-tools — do not reach for an alternate tool.
+    - See Rule P-priority for the canonical ranking and traversal rules.
+    - Zeek log outputs: `./analysis/network/zeek/`. Suricata: `./analysis/network/suricata/`.
+      Sliced PCAPs (tcpdump): `./exports/network/slices/`.
   </how>
 </rule>
 
 <example for="P-pcap">
   ```bash
-  # Inventory:
+  # Survey (n=1 + n=2):
   capinfos -A ./evidence/EV02.pcapng > ./analysis/network/EV02-capinfos.txt
-  bash audit.sh "capinfos -A EV02.pcapng" "<summary line>" "run zeek"
-
-  # Analysis:
-  cd ./analysis/network/zeek/
-  zeek -C -r ../../../evidence/EV02.pcapng
-  bash audit.sh "zeek -C -r EV02.pcapng" "<conn.log line count>" "survey: top talkers, DNS qnames"
+  cd ./analysis/network/zeek/ && zeek -C -r ../../../evidence/EV02.pcapng
+  bash audit.sh "capinfos+zeek EV02.pcapng" "<conn.log line count>" "next: suricata (n=3) per P-priority"
   ```
 </example>
 
@@ -613,7 +602,7 @@ itself emits a tree we don't control.
       `notes=ewfacquire compression=best hash=sha256`).
     - When conversion fails (corrupt source, unsupported format,
       `ewfacquire` missing), mark the originating lead BLOCKED per
-      Rule P-tools.
+      Rule P-priority.
     - E01 sources pass through unchanged.
   </how>
 </rule>
@@ -632,43 +621,128 @@ itself emits a tree we don't control.
 
 ---
 
-<rule id="P-tools" binds="every agent">
-  <name>No new forensic programs or techniques</name>
+<rule id="P-priority" binds="every agent">
+  <name>Tools are used in the per-domain priority order</name>
   <statement>
-    Agents do not introduce new forensic programs, libraries, or
-    analysis techniques into this project. The toolbox is the set of
-    binaries and libraries inventoried by `./analysis/preflight.md`
-    plus the parsers under `.claude/skills/dfir-bootstrap/parsers/`.
-    When an existing tool cannot answer a lead, the lead is set to
-    `status=blocked` in `./analysis/leads.md` with a one-sentence
-    suggested fix. dfir-qa aggregates BLOCKED leads in
-    `./reports/qa-review.md` so the operator can resolve them
-    out-of-band.
+    Every domain has a ranked tool list, broadest / highest-impact
+    first, narrowest / most time-consuming last. Surveyor runs the
+    `tier="survey"` tools only. Investigator / correlator / QA descend
+    the list in numeric order as additional questions arise. A tool
+    may be skipped only by recording an `audit.sh` row that names the
+    tool, the lead, and the reason (`skip n=<N> reason=<one-liner>`).
+    When the next required tool is unavailable on the host, the lead
+    BLOCKS with `suggested-fix=install-package; tool-needed=<binary>`;
+    QA aggregates BLOCKED leads in `./reports/qa-review.md`.
   </statement>
   <why>
-    Tool sprawl turns each case into a calibration exercise. The
-    current toolbox is calibrated, has documented fallback paths, and
-    is subject to integrity hooks. Introducing a new tool mid-case
-    bypasses those guarantees. BLOCKED leads with documented fixes
-    accumulate into a reviewable backlog (install a package, add a
-    parser, accept the gap) that the operator drives, not the agent.
+    A single ranked list makes "what comes next?" deterministic and
+    auditable. Surveyor stays narrow (the broad triage pass);
+    deeper passes pull in heavier tools only when leads demand them.
+    BLOCKED leads with documented fixes accumulate into a reviewable
+    backlog the operator drives, not the agent.
   </why>
   <how>
-    - Row format: standard `leads.md` row with `status=blocked`. The
-      `notes` column carries:
-      `suggested-fix=<verb>; tool-needed=<binary or library or rule>`
-    - Allowed `suggested-fix` verbs: `install-package`, `add-parser`,
-      `add-rule`, `upgrade-library`, `accept-gap`.
-    - dfir-qa step "BLOCKED-leads aggregate" reads every blocked row
-      and emits a `## BLOCKED leads` section in `qa-review.md` grouped
-      by `suggested-fix` verb.
+    - The full ranking lives in the `<tool-priorities>` block below.
+    - `tier="survey"` tools are the surveyor's mandatory pass for the domain.
+    - `tier="fallback"` tools run only when preflight reports the
+      domain RED (none of the higher-ranked tools are installed).
+    - Skip row: `bash audit.sh "skip n=3 yara-hunting" "reason=memory-image-not-windows" "next n=4 per P-priority"`.
+    - BLOCKED row format: standard `leads.md` row with `status=blocked`
+      and `notes` carrying
+      `suggested-fix=<verb>; tool-needed=<binary or library or rule>`.
+      Verbs: `install-package`, `add-parser`, `add-rule`, `upgrade-library`, `accept-gap`.
   </how>
 </rule>
 
-<example for="P-tools">
+<tool-priorities>
+
+  <domain name="network-forensics" survey="capinfos+zeek">
+    <tool n="1" tier="survey">capinfos</tool>             <!-- inventory: counts, encapsulation, time bounds -->
+    <tool n="2" tier="survey">zeek</tool>                 <!-- structured: conn/dns/http/tls/files/weird -->
+    <tool n="3">suricata</tool>                           <!-- IDS signatures (eve.json) -->
+    <tool n="4">tshark</tool>                             <!-- targeted display-filter queries -->
+    <tool n="5">tcpdump</tool>                            <!-- BPF slice → exports/network/slices/ -->
+    <tool n="6">bulk_extractor</tool>                     <!-- entity carving across the pcap -->
+    <tool n="7">parsers/conn_beacon.py</tool>             <!-- beacon candidates from conn.log -->
+    <tool n="8">parsers/zeek_triage.py</tool>             <!-- summary across zeek logs -->
+    <tool n="9" tier="fallback">parsers/pcap_summary.py</tool>
+  </domain>
+
+  <domain name="memory-analysis" survey="windows.info+psxview">
+    <tool n="1" tier="survey">vol3 windows.info</tool>
+    <tool n="2" tier="survey">vol3 windows.malware.psxview.PsXView</tool>
+    <tool n="3">vol3 windows.pstree</tool>
+    <tool n="4">vol3 windows.cmdline</tool>
+    <tool n="5">vol3 windows.netscan</tool>
+    <tool n="6">vol3 windows.dlllist</tool>
+    <tool n="7">vol3 windows.handles</tool>
+    <tool n="8">vol3 windows.malfind --dump</tool>
+    <tool n="9">vol3 windows.vadyarascan</tool>
+    <tool n="10">vol3 windows.dumpfiles</tool>
+    <tool n="11">memory-baseliner</tool>
+    <tool n="12" tier="fallback">strings</tool>
+  </domain>
+
+  <domain name="filesystem-sleuthkit" survey="mmls+fsstat+fls">
+    <tool n="1" tier="survey">mmls</tool>
+    <tool n="2" tier="survey">fsstat</tool>
+    <tool n="3" tier="survey">fls -r -m /</tool>
+    <tool n="4">mactime</tool>
+    <tool n="5">istat / ffind / ils</tool>
+    <tool n="6">icat</tool>
+    <tool n="7">tsk_recover</tool>
+    <tool n="8">blkls / blkcat</tool>
+    <tool n="9">photorec</tool>
+    <tool n="10">bulk_extractor</tool>
+  </domain>
+
+  <domain name="plaso-timeline" survey="log2timeline">
+    <tool n="1" tier="survey">log2timeline.py</tool>
+    <tool n="2">psort.py</tool>
+    <tool n="3">pinfo.py</tool>
+    <tool n="4">psteal.py</tool>
+    <tool n="5">image_export.py</tool>
+  </domain>
+
+  <domain name="windows-artifacts" survey="EvtxECmd+RECmd">
+    <tool n="1" tier="survey">EvtxECmd --maps</tool>
+    <tool n="2" tier="survey">RECmd --bn Kroll_Batch.reb</tool>
+    <tool n="3">MFTECmd</tool>
+    <tool n="4">PECmd</tool>
+    <tool n="5">AmcacheParser</tool>
+    <tool n="6">AppCompatCacheParser</tool>
+    <tool n="7">SBECmd</tool>
+    <tool n="8">JLECmd / LECmd</tool>
+    <tool n="9">RBCmd</tool>
+    <tool n="10">SrumECmd</tool>
+    <tool n="11">SQLECmd</tool>
+    <tool n="12" tier="fallback">parsers/{evtx,hive,prefetch,rb}_*.py</tool>
+  </domain>
+
+  <domain name="yara-hunting" survey="yara">
+    <tool n="1" tier="survey">yara -r /opt/yara-rules/ &lt;target&gt;</tool>
+    <tool n="2">yara -t &lt;tag&gt; /opt/yara-rules/ &lt;target&gt;</tool>
+    <tool n="3">yarac</tool>
+  </domain>
+
+  <domain name="sigma-hunting" survey="chainsaw">
+    <tool n="1" tier="survey">chainsaw hunt --sigma /opt/sigma-rules/sigma --mapping /opt/sigma-rules/mappings/sigma-event-logs-all.yml</tool>
+    <tool n="2">chainsaw hunt -r /opt/sigma-rules/chainsaw</tool>
+    <tool n="3">hayabusa csv-timeline</tool>
+    <tool n="4">evtx_dump</tool>
+  </domain>
+
+</tool-priorities>
+
+<example for="P-priority">
   ```
-  | L-EV02-network-04 | EV02 | network | Zeek did not classify the proprietary protocol on tcp/9876 | analysis/network/zeek/conn.log#L1247 | high | blocked | suggested-fix=add-parser; tool-needed=zeek-script-for-proto-9876 |
-  | L-EV01-disk-07 | EV01 | filesystem | TSK did not enumerate APFS snapshots | analysis/filesystem/findings.md#L88 | med | blocked | suggested-fix=install-package; tool-needed=apfs-fuse |
+  | L-EV02-network-04 | EV02 | network | Zeek did not classify proprietary protocol tcp/9876 | analysis/network/zeek/conn.log#L1247 | high | blocked | suggested-fix=add-parser; tool-needed=zeek-script-for-proto-9876 |
+  | L-EV01-disk-07    | EV01 | filesystem | TSK did not enumerate APFS snapshots | analysis/filesystem/findings.md#L88 | med | blocked | suggested-fix=install-package; tool-needed=apfs-fuse |
+  ```
+
+  ```
+  # audit row when an investigator skips n=5 because the question is in scope of n=6:
+  bash audit.sh "skip n=5 windows-artifacts" "reason=AmcacheParser already ran in survey; question pivots on Shimcache only" "advance to n=6 AppCompatCacheParser"
   ```
 </example>
 
@@ -701,7 +775,7 @@ itself emits a tree we don't control.
       `./exports/yara_hits/<EVID>/<rule>/` for rule-grouped trees
       (Rule L directory exception).
     - When a needed rule is missing from `/opt/yara-rules/`, mark the
-      lead BLOCKED per Rule P-tools with `suggested-fix=add-rule` and
+      lead BLOCKED per Rule P-priority with `suggested-fix=add-rule` and
       the rule's source identifier in `tool-needed`.
     - When `/opt/yara-rules/` is absent on the host, preflight reports
       `yara: RED`; the YARA-domain surveyor BLOCKS its lead with
@@ -720,11 +794,56 @@ itself emits a tree we don't control.
 
 ---
 
+<rule id="P-sigma" binds="dfir-surveyor,dfir-investigator">
+  <name>Sigma rules live at /opt/sigma-rules/</name>
+  <statement>
+    Every Sigma rule, Chainsaw rule, Hayabusa rule pack, and field-mapping
+    file used in this project lives under `/opt/sigma-rules/`. Chainsaw
+    and Hayabusa read rules from `/opt/sigma-rules/`; hits write to
+    `./analysis/sigma/<EVID>/` (CSV summaries) per the layer model. Agents
+    do not author rules elsewhere, do not cache them in case workspaces,
+    and do not pull them from arbitrary upstream sources mid-case.
+  </statement>
+  <why>
+    Mirror of Rule P-yara. A consolidated, curated rule tree at
+    `/opt/sigma-rules/` is the single source of truth across cases,
+    versioned by the operator out-of-band via the SIFT install script.
+    In-tree caching produced rule sprawl and per-case drift in past runs.
+  </why>
+  <how>
+    - Read path: `/opt/sigma-rules/sigma/` (Sigma rules),
+      `/opt/sigma-rules/chainsaw/` (Chainsaw bundled rules),
+      `/opt/sigma-rules/mappings/` (Chainsaw field-mapping YAMLs),
+      `/opt/sigma-rules/hayabusa/` (Hayabusa rule packs).
+    - Survey: `chainsaw hunt --sigma /opt/sigma-rules/sigma --mapping /opt/sigma-rules/mappings/sigma-event-logs-all.yml --csv -o ./analysis/sigma/<EVID>/ <evtx_dir>`.
+    - When a needed rule is missing from `/opt/sigma-rules/`, mark the
+      lead BLOCKED per Rule P-priority with `suggested-fix=add-rule`
+      and the rule's source identifier in `tool-needed`.
+    - When `/opt/sigma-rules/` is absent on the host, preflight reports
+      `sigma: RED`; the sigma-domain surveyor BLOCKS its lead with
+      `suggested-fix=install-package; tool-needed=/opt/sigma-rules`.
+  </how>
+</rule>
+
+<example for="P-sigma">
+  ```bash
+  # EVTX hunt:
+  chainsaw hunt \
+    --sigma /opt/sigma-rules/sigma \
+    --mapping /opt/sigma-rules/mappings/sigma-event-logs-all.yml \
+    --csv -o ./analysis/sigma/EV01/ \
+    ./working/EV01/Logs/
+  bash audit.sh "chainsaw hunt --sigma /opt/sigma-rules EV01" "<hit count>" "review hits; pivot per matched rule"
+  ```
+</example>
+
+---
+
 ## Cross-rule notes
 
 - The DISCIPLINE.md path is referenced from each agent's frontmatter as
   `MANDATORY` — the agent harness does not enforce reading; the marker
-  `discipline_v2_loaded` is the self-attestation signal.
+  `discipline_v3_loaded` is the self-attestation signal.
 - The PreToolUse / PostToolUse hooks enforce Rule A mechanically. Rules
   F / G / H / B are agent-prompt-level discipline; they are caught after
   the fact by audit-log review and by the orchestrator's correlation-

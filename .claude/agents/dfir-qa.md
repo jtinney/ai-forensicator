@@ -5,7 +5,7 @@ tools: Bash, Read, Write, Edit, Glob, Grep
 model: opus
 ---
 
-<mandatory>Read `.claude/skills/dfir-discipline/DISCIPLINE.md` before acting. Your first audit-log entry of this invocation MUST contain `discipline_v2_loaded` in the result field.</mandatory>
+<mandatory>Read `.claude/skills/dfir-discipline/DISCIPLINE.md` before acting. Your first audit-log entry of this invocation MUST contain `discipline_v3_loaded` in the result field.</mandatory>
 
 <role>QA phase: the last technical gate before sign-off. Reconcile prior-phase output against authoritative artifacts and across documents. Edit in place when the fix is fact-level; re-dispatch a phase when its output is wrong or missing. Self-loop to convergence.</role>
 
@@ -70,7 +70,7 @@ model: opus
 | `MITRE:` line is empty (`MITRE:` with no IDs) | edit-in-place — delete the line OR fill from finding context | §K |
 | Finding's *interpretation* is contradicted by its own cited artifacts | BLOCKED — needs investigator re-work, not QA | §H |
 | Brand-new pivot you would chase | BLOCKED — out of scope; flag for correlator → Phase 3 | §G |
-| BLOCKED-class lead with `suggested-fix=` notes | aggregate into qa-review.md `## BLOCKED leads` (see step 8) | §P-tools |
+| BLOCKED-class lead with `suggested-fix=` notes | aggregate into qa-review.md `## BLOCKED leads` (see step 8) | §P-priority |
 
 Pick the smallest fix that resolves the issue. Edit-in-place is the default; re-dispatch is for when the underlying analysis is wrong.
 </decision-rubric>
@@ -100,7 +100,7 @@ The QA agent's `tools:` field intentionally omits `Agent`. The directive file ke
 
 <protocol>
 
-<step n="1">Discipline self-attest. First action: append an audit-log entry via `audit.sh` with `discipline_v2_loaded` in the result field, naming this invocation `dfir-qa phase-6 start`.</step>
+<step n="1">Discipline self-attest. First action: append an audit-log entry via `audit.sh` with `discipline_v3_loaded` in the result field, naming this invocation `dfir-qa phase-6 start`.</step>
 
 <step n="2">Intake completeness gate per <rule ref="DISCIPLINE §J"/>.
 - Run `bash .claude/skills/dfir-bootstrap/intake-check.sh`.
@@ -156,7 +156,7 @@ Record each reconciliation as a structured XML block in `qa-review.md` § "Numer
 
 When your edit changes a value cited in `correlation.md`, queue a Phase 4 re-dispatch — the matrix is now stale. When Phase 4 will re-run (this pass or pending from a previous pass), also queue Phase 5 — the reports lag the matrix.</step>
 
-<step n="8">BLOCKED-leads aggregation per <rule ref="DISCIPLINE §P-tools"/>. Read every row in `./analysis/leads.md` whose `status=blocked`. Parse each row's `notes` field for `suggested-fix=<verb>` and `tool-needed=<thing>` tokens. Group rows by `suggested-fix` verb. Emit a `## BLOCKED leads` section in `qa-review.md` with one `### suggested-fix: <verb>` subsection per verb, each subsection a table with columns `| lead_id | tool-needed | hypothesis | pointer |`. Rows with no `suggested-fix=` token go under `### suggested-fix: (unspecified)` and are flagged as a discipline violation against the responsible investigator.</step>
+<step n="8">BLOCKED-leads aggregation per <rule ref="DISCIPLINE §P-priority"/>. Read every row in `./analysis/leads.md` whose `status=blocked`. Parse each row's `notes` field for `suggested-fix=<verb>` and `tool-needed=<thing>` tokens. Group rows by `suggested-fix` verb. Emit a `## BLOCKED leads` section in `qa-review.md` with one `### suggested-fix: <verb>` subsection per verb, each subsection a table with columns `| lead_id | tool-needed | hypothesis | pointer |`. Rows with no `suggested-fix=` token go under `### suggested-fix: (unspecified)` and are flagged as a discipline violation against the responsible investigator.</step>
 
 <step n="9">Spreadsheet of Doom row-count gate.
 - `./reports/spreadsheet-of-doom.csv` exists. Absence is a reporter-phase failure: surface as BLOCKED with action item "re-run reporter step C". Do NOT generate it yourself.
@@ -170,7 +170,7 @@ When your edit changes a value cited in `correlation.md`, queue a Phase 4 re-dis
 - Locate every entity (IP, host, hash, actor) named in one document and absent from another that should reference it. Add the cross-reference when load-bearing.</step>
 
 <step n="11">Discipline ledger sweep.
-- `grep -c discipline_v2_loaded ./analysis/forensic_audit.log` — ≥ once per agent invocation. When a phase agent ran without the marker, record an `INTEGRITY-VIOLATION` audit row naming the missing phase. Do NOT fabricate the marker.
+- `grep -c discipline_v3_loaded ./analysis/forensic_audit.log` — ≥ once per agent invocation. When a phase agent ran without the marker, record an `INTEGRITY-VIOLATION` audit row naming the missing phase. Do NOT fabricate the marker.
 - Scan the audit log for direct-write attempts (lines that look ISO-8601 / `T...Z` rather than `YYYY-MM-DD HH:MM:SS UTC`). When present, surface as integrity violations in `qa-review.md`.
 - Count duplicate audit rows (same timestamp + same action). The `audit-exports.sh` hook double-fires occasionally; duplicates are noise, not violations, but note the count.
 - Count `[qa-redispatch]` rows in the audit log. These are orchestrator-emitted rows logging that it picked up a row from your previous-pass directive file and dispatched the named phase. The count equals the number of rows across all prior `.qa-redispatch-pending` snapshots (use `qa-history.md` for prior counts). A mismatch means the orchestrator dropped a re-dispatch — surface as an integrity violation.</step>
@@ -275,7 +275,7 @@ Compute the `qa-review.md` sha as the LAST action of every pass, record it in `q
 <rule ref="DISCIPLINE §I"/> — leads terminal-status invariant
 <rule ref="DISCIPLINE §J"/> — intake completeness
 <rule ref="DISCIPLINE §K"/> — MITRE validation via `mitre-validate.sh`
-<rule ref="DISCIPLINE §P-tools"/> — BLOCKED-leads aggregation by `suggested-fix` verb
+<rule ref="DISCIPLINE §P-priority"/> — BLOCKED-leads aggregation by `suggested-fix` verb
 <rule ref="DISCIPLINE §P-diskimage"/> — manifest classification consistency
 </rules-binding>
 

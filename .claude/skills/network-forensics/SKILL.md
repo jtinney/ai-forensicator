@@ -1,5 +1,12 @@
 # Skill: Network Forensics (PCAP / Zeek / Suricata / Flow)
 
+<protocol>
+  <rule>Tool order is the <code>network-forensics</code> entry of DISCIPLINE.md §P-priority. Surveyor runs <code>capinfos</code> + <code>zeek</code> (the <code>tier="survey"</code> pair). Investigator / correlator / QA descend the list in order: <code>suricata</code> → <code>tshark</code> → <code>tcpdump</code> → <code>bulk_extractor</code> → <code>parsers/conn_beacon.py</code> → <code>parsers/zeek_triage.py</code> → <code>parsers/pcap_summary.py</code>.</rule>
+  <rule>Survey output: Zeek logs to <code>./analysis/network/zeek/</code>; Suricata to <code>./analysis/network/suricata/</code>; sliced PCAPs (tcpdump) to <code>./exports/network/slices/</code>.</rule>
+  <rule>Skip a ranked tool only by recording an <code>audit.sh</code> row naming the tool and the reason (per §P-priority).</rule>
+  <rule>The parallel survey wrapper is <code>parsers/zeek_suricata_parallel.sh</code> — runs the survey pair plus n=3 (Suricata) plus tcpdump slices in one batch.</rule>
+</protocol>
+
 ## Use this skill when
 - A packet capture (`.pcap`, `.pcapng`, `.cap`) is in scope
 - Zeek logs (`conn.log`, `dns.log`, `http.log`, `ssl.log`, `files.log`,
@@ -66,22 +73,18 @@ let `tshark`'s display filter answer it directly. When the question is
 work from those — then drop back to `tshark` for byte-level confirmation of
 specific records the Zeek logs flag.
 
-## Tier reference (what to use when full toolchain is absent)
+## Ranking and fallbacks
 
-| Capability | Tier 1 (preferred) | Tier 2 | Tier 3 (stdlib fallback) |
-|---|---|---|---|
-| pcap metadata | `capinfos` | `tshark -r ... -q -z` | `parsers/pcap_summary.py` (header + linktype + count) |
-| Top talkers / DNS / SNI | `tshark` `-T fields` | Zeek `conn.log`/`dns.log`/`ssl.log` | `parsers/pcap_summary.py` (5-tuple flow + DNS qname extraction) |
-| Structured network logs | `zeek -r` | — | (none — install Zeek; pcap_summary covers basic triage) |
-| IDS alerts | `suricata -r` | snort | (none — install Suricata; YARA sweep is the next-best signature pass) |
-| Beaconing detection | RITA over Zeek logs | `parsers/conn_beacon.py` | `parsers/conn_beacon.py` (stdlib only — works directly on TSV `conn.log`) |
-| Suricata `eve.json` triage | `jq` + `suricatasc` | `parsers/suricata_eve.py` | `parsers/suricata_eve.py` |
-| Zeek log triage | `zeek-cut`, `awk` | `parsers/zeek_triage.py` | `parsers/zeek_triage.py` |
-| File carving from pcap | `tshark --export-objects` | `tcpxtract` | `bulk_extractor` (already Tier 1 across project) |
+The canonical priority list is in DISCIPLINE.md §P-priority under
+`domain="network-forensics"`. Surveyor runs the `tier="survey"` pair
+(capinfos + zeek). Subsequent agents descend the list in numeric order
+as questions escalate: suricata, tshark, tcpdump, bulk_extractor,
+conn_beacon.py, zeek_triage.py, pcap_summary.py. Tools may be unavailable
+on the host — the next-required tool blocks the lead per §P-priority with
+`suggested-fix=install-package; tool-needed=<binary>`.
 
-If the answer is "we cannot meaningfully analyse this network evidence at any
-tier on this host," flag it in `./reports/00_intake.md` and request the install
-rather than producing a half-answer.
+If no tool in the list is installed, flag it in `./reports/00_intake.md`
+and request the install rather than producing a half-answer.
 
 ## Overview
 Network forensics on SIFT is built around four toolchains:

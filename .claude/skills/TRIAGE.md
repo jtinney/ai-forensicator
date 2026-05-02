@@ -20,8 +20,8 @@ Binds DISCIPLINE §A (audit-log integrity), §B (headline revalidation), §F
 (hypothesis-first / cheapest-disconfirmation-first), §G (scope closure), §H
 (lead surface), §I (no lead un-worked), §J (intake completeness), §K
 (ATT&CK tagging), §L (multi-evidence path encoding), §P-pcap, §P-diskimage,
-§P-tools, §P-yara. Every audit-log write goes through `audit.sh`. Every
-pivot emits the marker `discipline_v2_loaded` in its action context.
+§P-priority, §P-yara, §P-sigma. Every audit-log write goes through `audit.sh`. Every
+pivot emits the marker `discipline_v3_loaded` in its action context.
 </rules-binding>
 
 ## Operating philosophy
@@ -49,7 +49,7 @@ bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/case-init.sh" <CASE_ID
 Tier the toolbox per `preflight.md` BEFORE touching evidence: Sleuth Kit +
 libewf, EZ Tools + dotnet, Plaso, Volatility 3, YARA. Record chosen tier
 per domain in `./reports/00_intake.md`. Tool-substitution and BLOCKED-lead
-rules live in DISCIPLINE §P-tools.
+rules live in DISCIPLINE §P-priority.
 </step>
 
 <step n="1" name="triage" budget="~15-45 min">

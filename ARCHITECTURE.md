@@ -63,10 +63,11 @@ Where each shared concept is canonically defined.
 | MITRE ATT&CK tagging          | `.claude/skills/dfir-discipline/DISCIPLINE.md` Rule K |
 | intake completeness           | `.claude/skills/dfir-discipline/DISCIPLINE.md` Rule J |
 | multi-evidence path encoding  | `.claude/skills/dfir-discipline/DISCIPLINE.md` Rule L |
-| PCAP processing (Zeek-only)   | `.claude/skills/dfir-discipline/DISCIPLINE.md` Rule P-pcap |
+| PCAP processing (priority list) | `.claude/skills/dfir-discipline/DISCIPLINE.md` Rule P-pcap → Rule P-priority |
 | disk-image format (E01)       | `.claude/skills/dfir-discipline/DISCIPLINE.md` Rule P-diskimage |
-| new-tool prohibition / BLOCKED leads | `.claude/skills/dfir-discipline/DISCIPLINE.md` Rule P-tools |
-| YARA rules location           | `.claude/skills/dfir-discipline/DISCIPLINE.md` Rule P-yara |
+| tool priority + traversal / BLOCKED leads | `.claude/skills/dfir-discipline/DISCIPLINE.md` Rule P-priority |
+| YARA rules location (`/opt/yara-rules/`) | `.claude/skills/dfir-discipline/DISCIPLINE.md` Rule P-yara |
+| Sigma rules location (`/opt/sigma-rules/`) | `.claude/skills/dfir-discipline/DISCIPLINE.md` Rule P-sigma |
 | tool inventory (per-host)     | `./analysis/preflight.md` (output of `preflight.sh`) |
 | reference-style convention    | `CLAUDE.md` `<reference-style>` |
 | lead-ID prefixes              | `.claude/skills/ORCHESTRATE.md` Lead ID conventions table |

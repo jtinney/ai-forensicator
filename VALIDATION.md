@@ -123,12 +123,12 @@ finding's confidence by one grade until you can re-derive it.
 
 ### A3. Discipline self-attestation
 
-Every phase agent appends `discipline_v2_loaded` to its first audit
+Every phase agent appends `discipline_v3_loaded` to its first audit
 entry. Confirm every phase that ran left its marker:
 
 ```bash
-grep -c discipline_v2_loaded analysis/forensic_audit.log
-grep    discipline_v2_loaded analysis/forensic_audit.log \
+grep -c discipline_v3_loaded analysis/forensic_audit.log
+grep    discipline_v3_loaded analysis/forensic_audit.log \
     | awk -F'|' '{print $2}' | sort -u
 ```
 
@@ -411,7 +411,7 @@ PROVENANCE & INTEGRITY
 [ ] A1  Evidence sha256 re-hash matches manifest for every EV row
 [ ] A1  Bundle-member spot-check (5 random) matches manifest
 [ ] A2  audit-retrofit.sh: no structural integrity violations
-[ ] A3  Every phase agent left a discipline_v2_loaded marker
+[ ] A3  Every phase agent left a discipline_v3_loaded marker
 [ ] A4  Exports manifest spot-check: 3 random files match recorded sha
 [ ] A5  intake-check.sh: PASS
 
@@ -482,7 +482,7 @@ bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/audit-retrofit.sh" \
     analysis/forensic_audit.log
 
 # A3 — discipline marker count.
-grep -c discipline_v2_loaded analysis/forensic_audit.log
+grep -c discipline_v3_loaded analysis/forensic_audit.log
 
 # B1 — leads invariant.
 bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/leads-check.sh"

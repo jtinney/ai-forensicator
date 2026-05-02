@@ -12,16 +12,16 @@
 - **Evidence ID:** EV01
 - **Evidence sha256:** 70a8d3b9c5e4f211223344556677889900aabbccddeeff00112233445566778a
 - **Domain:** yara
-- **Surveyor agent version:** dfir-surveyor / discipline_v2_loaded
+- **Surveyor agent version:** dfir-surveyor / discipline_v3_loaded
 - **UTC timestamp:** 2026-04-26 15:02:14 UTC
 
 ## Tools run
 
-- `yara (compiled vendor pack)` -> `yara -C .claude/skills/yara-hunting/rules/compiled.rules ./evidence/JANE-WIN10-DESKTOP.E01 -p 4 -r > ./analysis/yara/disk-vendor-hits.txt` -> exit 0 -> `./analysis/yara/disk-vendor-hits.txt`
-- `yara (memory image)` -> `yara -C .claude/skills/yara-hunting/rules/compiled.rules ./evidence/JANE-WIN10-DESKTOP.mem > ./analysis/yara/mem-vendor-hits.txt` -> exit 0 -> `./analysis/yara/mem-vendor-hits.txt`
-- `yara (recovered binaries)` -> `yara -s -p 4 .claude/skills/yara-hunting/rules/compiled.rules ./exports/recovered/ > ./analysis/yara/recovered-hits.txt` -> exit 0 -> `./analysis/yara/recovered-hits.txt`
-- `yara (HTTP carve sweep)` -> `yara -s .claude/skills/yara-hunting/rules/cobalt_strike.yar ./exports/network/http_objects/` -> exit 0 -> `./analysis/yara/http-objects-hits.txt`
-- `yarac (validate rule pack)` -> `yarac .claude/skills/yara-hunting/rules/local/cobalt_strike.yar /tmp/cs.compiled` -> exit 0 -> `/tmp/cs.compiled`
+- `yara (compiled vendor pack)` -> `yara -C ./analysis/yara/full.compiled ./evidence/JANE-WIN10-DESKTOP.E01 -p 4 -r > ./analysis/yara/disk-vendor-hits.txt` -> exit 0 -> `./analysis/yara/disk-vendor-hits.txt`
+- `yara (memory image)` -> `yara -C ./analysis/yara/full.compiled ./evidence/JANE-WIN10-DESKTOP.mem > ./analysis/yara/mem-vendor-hits.txt` -> exit 0 -> `./analysis/yara/mem-vendor-hits.txt`
+- `yara (recovered binaries)` -> `yara -s -p 4 ./analysis/yara/full.compiled ./exports/recovered/ > ./analysis/yara/recovered-hits.txt` -> exit 0 -> `./analysis/yara/recovered-hits.txt`
+- `yara (HTTP carve sweep)` -> `yara -s /opt/yara-rules/cobaltstrike/ ./exports/network/http_objects/` -> exit 0 -> `./analysis/yara/http-objects-hits.txt`
+- `yarac (compile rule pack)` -> `yarac /opt/yara-rules/cobaltstrike/cobalt_strike.yar ./analysis/yara/cs.compiled` -> exit 0 -> `./analysis/yara/cs.compiled`
 
 ## Findings of interest
 
@@ -35,7 +35,7 @@
 | lead_id | priority | hypothesis | next-step query | est-cost |
 |---------|----------|------------|-----------------|----------|
 | `L-EV01-yara-01` | high | The injected VAD in PID 4488 is Cobalt Strike Beacon; coupled with memory netscan + network-side beacon, attribution is high | `vol windows.vadyarascan --pid 4488 --yara-rules ./compiled.rules` for per-offset hit list; pivot offsets vs `windows.malfind --pid 4488 --dump` output | ~2 min |
-| `L-EV01-yara-02` | high | `update_helper.exe` (recovered) is the staged stager for the in-memory beacon; same family same campaign | Promote disk-side IOCs from the binary: hash, PDB path, embedded C2 URL — append as a per-file YARA rule under `.claude/skills/yara-hunting/rules/local/` | ~5 min |
+| `L-EV01-yara-02` | high | `update_helper.exe` (recovered) is the staged stager for the in-memory beacon; same family same campaign | Surface disk-side IOCs (hash, PDB path, embedded C2 URL) as a finding; the operator authors the corresponding rule under `/opt/yara-rules/cobaltstrike/` out-of-band | ~5 min |
 | `L-EV01-yara-03` | high | The 4 MB POST is an AES-encrypted exfil payload; matches Cobalt Strike's default AES exfil mode | Decrypt-attempt is out of scope for the surveyor; escalate to investigator with the AES hit offsets and request the carved-key pivot from memory dump | ~1 min |
 | `L-EV01-yara-04` | med  | The on-disk implant binary was wiped before capture; only Recycle Bin and slack hold residual bytes | Re-run YARA against `blkls -A unalloc.raw` (unallocated only) to test whether implant bytes survive in slack independent of recovered-files path | ~4 min |
 

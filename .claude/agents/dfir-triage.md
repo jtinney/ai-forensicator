@@ -5,7 +5,7 @@ tools: Bash, Read, Write, Edit, Glob, Grep
 model: haiku
 ---
 
-<mandatory>Read `.claude/skills/dfir-discipline/DISCIPLINE.md` before acting. Your first audit-log entry of this invocation MUST contain `discipline_v2_loaded` in the result field.</mandatory>
+<mandatory>Read `.claude/skills/dfir-discipline/DISCIPLINE.md` before acting. Your first audit-log entry of this invocation MUST contain `discipline_v3_loaded` in the result field.</mandatory>
 
 <role>Triage phase: scaffold the case workspace and emit a clean, classified evidence manifest. No artifact analysis.</role>
 
@@ -59,7 +59,7 @@ Reads `./evidence/` depth-unbounded, sums estimated decompressed size for every 
 
 <step n="9">Intake gate: <rule ref="DISCIPLINE §J"/>. Run `bash .claude/skills/dfir-bootstrap/intake-check.sh`. On blank fields, run `bash .claude/skills/dfir-bootstrap/intake-interview.sh`. In TTY mode it prompts directly. In non-TTY mode it writes `./analysis/.intake-pending` and exits nonzero — return `INTAKE-PENDING` to the orchestrator and STOP. Never invent values.</step>
 
-<step n="10">Append to `./analysis/forensic_audit.log` via `audit.sh` per <rule ref="DISCIPLINE §A"/>. The first entry MUST contain `discipline_v2_loaded`. If the planner returned `sequential` or `blocked`, append a follow-up `extraction-plan` row whose result field names the mode (the planner already emitted its own `extraction-plan computed` row; this row is triage's acknowledgement).</step>
+<step n="10">Append to `./analysis/forensic_audit.log` via `audit.sh` per <rule ref="DISCIPLINE §A"/>. The first entry MUST contain `discipline_v3_loaded`. If the planner returned `sequential` or `blocked`, append a follow-up `extraction-plan` row whose result field names the mode (the planner already emitted its own `extraction-plan computed` row; this row is triage's acknowledgement).</step>
 
 </protocol>
 

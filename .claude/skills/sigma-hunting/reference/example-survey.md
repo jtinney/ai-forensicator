@@ -12,14 +12,14 @@
 - **Evidence ID:** EV01
 - **Evidence sha256:** 81d6f4a9b7c3e205112233445566778899aabbccddeeff00112233445566778b
 - **Domain:** sigma
-- **Surveyor agent version:** dfir-surveyor / discipline_v2_loaded
+- **Surveyor agent version:** dfir-surveyor / discipline_v3_loaded
 - **UTC timestamp:** 2026-04-26 15:14:05 UTC
 
 ## Tools run
 
-- `chainsaw lint` -> `chainsaw lint .claude/skills/sigma-hunting/rules/sigma/` -> exit 0 -> stdout (412 rules valid, 0 warnings)
-- `chainsaw hunt (Sigma + curated mapping)` -> `chainsaw hunt ./exports/evtx/ -s .claude/skills/sigma-hunting/rules/sigma/ --mapping .claude/skills/sigma-hunting/mappings/sigma-event-logs-all.yml --csv -o ./analysis/sigma/chainsaw-sigma.csv` -> exit 0 -> `./analysis/sigma/chainsaw-sigma.csv`
-- `chainsaw hunt (Chainsaw rules)` -> `chainsaw hunt ./exports/evtx/ -r .claude/skills/sigma-hunting/rules/chainsaw/ --csv -o ./analysis/sigma/chainsaw-curated.csv` -> exit 0 -> `./analysis/sigma/chainsaw-curated.csv`
+- `chainsaw lint` -> `chainsaw lint /opt/sigma-rules/sigma/` -> exit 0 -> stdout (412 rules valid, 0 warnings)
+- `chainsaw hunt (Sigma + curated mapping)` -> `chainsaw hunt ./exports/evtx/ -s /opt/sigma-rules/sigma/ --mapping /opt/sigma-rules/mappings/sigma-event-logs-all.yml --csv -o ./analysis/sigma/chainsaw-sigma.csv` -> exit 0 -> `./analysis/sigma/chainsaw-sigma.csv`
+- `chainsaw hunt (Chainsaw rules)` -> `chainsaw hunt ./exports/evtx/ -r /opt/sigma-rules/chainsaw/ --csv -o ./analysis/sigma/chainsaw-curated.csv` -> exit 0 -> `./analysis/sigma/chainsaw-curated.csv`
 - `hayabusa csv-timeline` -> `hayabusa csv-timeline -d ./exports/evtx/ -o ./analysis/sigma/hayabusa-timeline.csv -p verbose-min` -> exit 0 -> `./analysis/sigma/hayabusa-timeline.csv`
 - `chainsaw search (literal IOC)` -> `chainsaw search ./exports/evtx/ -s "185.220.101.42"` -> exit 0 -> `./analysis/sigma/chainsaw-search-c2-ip.csv`
 - `evtx_dump (pre-filter for noisy channels)` -> `evtx_dump -o jsonl ./exports/evtx/Microsoft-Windows-Sysmon%4Operational.evtx > ./analysis/sigma/jsonl/sysmon.jsonl` -> exit 0 -> `./analysis/sigma/jsonl/sysmon.jsonl`

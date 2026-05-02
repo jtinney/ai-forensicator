@@ -10,9 +10,9 @@ or when context would otherwise balloon past a single session.
 This skill binds the orchestrator to DISCIPLINE §A (audit-log integrity), §B
 (headline revalidation), §F (hypothesis-first), §G (scope closure), §H (lead
 surface), §I (no lead un-worked), §J (intake completeness), §K (ATT&CK
-tagging), §L (multi-evidence path encoding), §P-pcap, §P-diskimage, §P-tools,
-and §P-yara. Every dispatched agent invocation MUST emit the marker
-`discipline_v2_loaded` in its return result; the orchestrator MUST verify
+tagging), §L (multi-evidence path encoding), §P-pcap, §P-diskimage, §P-priority,
+§P-yara, and §P-sigma. Every dispatched agent invocation MUST emit the marker
+`discipline_v3_loaded` in its return result; the orchestrator MUST verify
 that marker before treating the agent's output as authoritative.
 </rules-binding>
 

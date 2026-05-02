@@ -12,7 +12,7 @@
 - **Evidence ID:** EV02
 - **Evidence sha256:** 3b27c81dffe204169c5b2d8a4e6f70819293847560abcdef0123456789abcdef
 - **Domain:** network
-- **Surveyor agent version:** dfir-surveyor / discipline_v2_loaded
+- **Surveyor agent version:** dfir-surveyor / discipline_v3_loaded
 - **UTC timestamp:** 2026-04-26 14:18:42 UTC
 
 ## Tools run

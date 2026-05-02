@@ -8,9 +8,9 @@ agent's `<mandatory>` line points here.
 <contents>
 - [`DISCIPLINE.md`](./DISCIPLINE.md) — the rules. Defines:
   - `<audit-log-format>` — canonical row grammar
-  - `<marker-self-attestation>` — `discipline_v2_loaded` requirement
+  - `<marker-self-attestation>` — `discipline_v3_loaded` requirement
   - `<index>` — concept → section map
-  - Rules A, B, F, G, H, I, J, K, L, P-pcap, P-diskimage, P-tools, P-yara
+  - Rules A, B, F, G, H, I, J, K, L, P-pcap, P-diskimage, P-priority, P-yara, P-sigma
 - [`templates/survey-template.md`](./templates/survey-template.md) — Phase-2
   surveyor output skeleton; lint enforced by
   `.claude/skills/dfir-bootstrap/lint-survey.sh`.
@@ -21,6 +21,6 @@ agent's `<mandatory>` line points here.
 
 <usage>
 Every phase agent's first action: read `DISCIPLINE.md`, then emit the marker
-`discipline_v2_loaded` in the `result` field of its first audit row. The
+`discipline_v3_loaded` in the `result` field of its first audit row. The
 orchestrator and `dfir-qa` grep for it.
 </usage>

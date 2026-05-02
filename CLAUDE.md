@@ -89,16 +89,22 @@ A case is not CLOSED until all five gates pass:
 Project-wide rules. Canonical definitions in
 `@.claude/skills/dfir-discipline/DISCIPLINE.md`.
 
-- **Tools come from preflight.** When an existing tool cannot answer a
-  lead, mark the lead BLOCKED per `§P-tools` with
-  `suggested-fix=<verb>; tool-needed=<thing>` in the notes column. New
-  programs and techniques are NOT introduced.
-- **PCAP is Zeek-only** (`§P-pcap`). `capinfos` inventory is permitted;
-  deep analysis runs through Zeek.
+- **Tool order is per-domain priority** (`§P-priority`). Surveyor runs the
+  domain's `tier="survey"` tools; investigator / correlator / QA descend
+  the list in numeric order as questions escalate. When the next required
+  tool is absent, mark the lead BLOCKED with `suggested-fix=<verb>;
+  tool-needed=<thing>` in the notes column. Skipping a rank requires an
+  `audit.sh` row recording the reason.
+- **PCAP order** (`§P-pcap`) is the network entry of `§P-priority`:
+  `capinfos` inventory + `zeek` for survey; `suricata`, `tshark`, etc.
+  in order for deeper passes.
 - **Non-E01 disk images are converted to E01** in `./working/e01/`
   before any analysis (`§P-diskimage`).
 - **YARA rules** live at `/opt/yara-rules/`; scans read from there; hits
   write to `./exports/yara_hits/` (`§P-yara`).
+- **Sigma rules** live at `/opt/sigma-rules/`; Chainsaw / Hayabusa read
+  rules + mappings from there; CSV summaries write to `./analysis/sigma/`
+  (`§P-sigma`).
 - **Evidence integrity.** Never modify `./evidence/`. The PreToolUse
   hook and `chmod a-w` enforce this.
 - **Timestamps** in UTC.

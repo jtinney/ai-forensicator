@@ -12,7 +12,7 @@
 - **Evidence ID:** EV01
 - **Evidence sha256:** 9f4a5b7c2d8e1f30a6b8c0d2e4f6081929384756abcdef0123456789abcdef01
 - **Domain:** windows-artifacts
-- **Surveyor agent version:** dfir-surveyor / discipline_v2_loaded
+- **Surveyor agent version:** dfir-surveyor / discipline_v3_loaded
 - **UTC timestamp:** 2026-04-26 14:08:11 UTC
 
 ## Tools run

@@ -1,9 +1,8 @@
 # YARA Rule Conventions — Reference
 
-Every rule in `rules/local/` and every case-local rule under
-`./analysis/yara/` MUST conform to this convention. The linter
-(`validate-rules.sh`) enforces the required keys and runs `yarac` to confirm
-syntax.
+Every rule under `/opt/yara-rules/` MUST conform to this convention. The
+linter (`validate-rules.sh`) defaults to `/opt/yara-rules/` — it enforces
+the required keys and runs `yarac` to confirm syntax.
 
 ## Required `meta` keys
 
@@ -50,13 +49,12 @@ least one `Scope` tag and one `Severity` tag.
 
 | Provenance prefix | Used for |
 |---|---|
-| `Local_`     | Rules under `rules/local/` |
-| `Case<N>_`   | Case-local rules under `./analysis/yara/` (replace N with the case number) |
-| `Sigbase_`   | Mirror of Neo23x0 signature-base (when promoted into local/) |
-| `Yaraforge_` | Mirror of YARAHQ yara-forge |
-| `Elastic_`   | Mirror of elastic/protections-artifacts |
+| `Local_`     | Project-authored rules under `/opt/yara-rules/local/` |
+| `Sigbase_`   | Mirror of Neo23x0 signature-base under `/opt/yara-rules/sigbase/` |
+| `Yaraforge_` | Mirror of YARAHQ yara-forge under `/opt/yara-rules/yaraforge/` |
+| `Elastic_`   | Mirror of elastic/protections-artifacts under `/opt/yara-rules/elastic/` |
 
-Example: `Local_Emotet_Loader_v3`, `Case42_Lateral_PsExec_Beacon`.
+Example: `Local_Emotet_Loader_v3`, `Sigbase_Lateral_PsExec_Beacon`.
 
 ## Performance contract
 
@@ -77,11 +75,12 @@ condition:
 
 ## False-positive contract
 
-Rules in `rules/local/` SHOULD record an FP test. The validator's
+Rules under `/opt/yara-rules/` SHOULD record an FP test. The validator's
 `--fp-test` flag re-runs the test against `/usr/bin` (and
 `/Windows/System32` if mounted) and warns when a rule fires on more than
 `FP_THRESHOLD` (default 5) goodware files.
 
-If a rule trips heavy goodware, move it to `rules/quarantine/` rather than
-deleting it — keeping it on disk preserves the historical record and lets a
-later analyst re-tighten it.
+If a rule trips heavy goodware, the operator moves it to a quarantine
+subtree (e.g. `/opt/yara-rules/_quarantine/`) rather than deleting it —
+keeping it on disk preserves the historical record. This is operator
+maintenance, performed out-of-band; agents do not touch `/opt/yara-rules/`.

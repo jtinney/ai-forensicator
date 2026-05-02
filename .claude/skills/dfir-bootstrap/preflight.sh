@@ -248,6 +248,49 @@ path_check /opt/zimmermantools/SQLECmd/SQLECmd.dll "SQLECmd.dll" || true
 
 cat <<'EOF'
 
+## Rule corpora (operator-maintained at /opt)
+| Corpus | Status | Path / Count |
+|---|---|---|
+EOF
+
+# /opt/yara-rules/ presence + non-empty count
+YARA_RULES_DIR="/opt/yara-rules"
+if [[ -d "$YARA_RULES_DIR" ]]; then
+    yara_count=$(find "$YARA_RULES_DIR" -type f \( -name '*.yar' -o -name '*.yara' \) 2>/dev/null | wc -l)
+    if [[ "$yara_count" -gt 0 ]]; then
+        printf "| YARA rules | PRESENT | \`%s\` (%s rule files) |\n" "$YARA_RULES_DIR" "$yara_count"
+        YARA_RULES_OK=1
+    else
+        printf "| YARA rules | EMPTY | \`%s\` exists but contains no .yar/.yara files |\n" "$YARA_RULES_DIR"
+        (( MISSING_COUNT++ )) || true
+        YARA_RULES_OK=0
+    fi
+else
+    printf "| YARA rules | MISSING | \`%s\` |\n" "$YARA_RULES_DIR"
+    (( MISSING_COUNT++ )) || true
+    YARA_RULES_OK=0
+fi
+
+# /opt/sigma-rules/ presence + non-empty count
+SIGMA_RULES_DIR="/opt/sigma-rules"
+if [[ -d "$SIGMA_RULES_DIR" ]]; then
+    sigma_count=$(find "$SIGMA_RULES_DIR" -type f -name '*.yml' 2>/dev/null | wc -l)
+    if [[ "$sigma_count" -gt 0 ]]; then
+        printf "| Sigma rules | PRESENT | \`%s\` (%s rule files) |\n" "$SIGMA_RULES_DIR" "$sigma_count"
+        SIGMA_RULES_OK=1
+    else
+        printf "| Sigma rules | EMPTY | \`%s\` exists but contains no .yml files |\n" "$SIGMA_RULES_DIR"
+        (( MISSING_COUNT++ )) || true
+        SIGMA_RULES_OK=0
+    fi
+else
+    printf "| Sigma rules | MISSING | \`%s\` |\n" "$SIGMA_RULES_DIR"
+    (( MISSING_COUNT++ )) || true
+    SIGMA_RULES_OK=0
+fi
+
+cat <<'EOF'
+
 ## dpkg packages (forensic)
 | Package | Status | Version |
 |---|---|---|
@@ -371,22 +414,27 @@ else
     printf "| memory-analysis | RED | Volatility 3 missing — searched /opt/volatility3*/vol.py, PATH, python module |\n"
 fi
 
-# yara-hunting
-if command -v yara >/dev/null 2>&1; then
-    printf "| yara-hunting | GREEN | yara CLI present |\n"
+# yara-hunting — needs BOTH the yara binary AND a populated /opt/yara-rules/
+if command -v yara >/dev/null 2>&1 && [[ "${YARA_RULES_OK:-0}" -eq 1 ]]; then
+    printf "| yara-hunting | GREEN | yara CLI present + \`/opt/yara-rules/\` populated |\n"
+elif command -v yara >/dev/null 2>&1; then
+    printf "| yara-hunting | YELLOW | yara CLI present but \`/opt/yara-rules/\` empty/missing — populate via SIFT install |\n"
 else
-    printf "| yara-hunting | RED | yara missing — install \`yara\` |\n"
+    printf "| yara-hunting | RED | yara missing — install \`yara\` and populate \`/opt/yara-rules/\` |\n"
 fi
 
-# sigma-hunting — green when chainsaw is present (preferred);
-# yellow when only hayabusa is available (less of an orchestrator fit);
-# red when neither is on PATH.
-if command -v chainsaw >/dev/null 2>&1; then
-    printf "| sigma-hunting | GREEN | chainsaw on PATH |\n"
+# sigma-hunting — needs a binary (chainsaw preferred, hayabusa acceptable)
+# AND a populated /opt/sigma-rules/.
+if command -v chainsaw >/dev/null 2>&1 && [[ "${SIGMA_RULES_OK:-0}" -eq 1 ]]; then
+    printf "| sigma-hunting | GREEN | chainsaw on PATH + \`/opt/sigma-rules/\` populated |\n"
+elif command -v chainsaw >/dev/null 2>&1; then
+    printf "| sigma-hunting | YELLOW | chainsaw on PATH but \`/opt/sigma-rules/\` empty/missing — populate via SIFT install |\n"
+elif command -v hayabusa >/dev/null 2>&1 && [[ "${SIGMA_RULES_OK:-0}" -eq 1 ]]; then
+    printf "| sigma-hunting | YELLOW | hayabusa present (chainsaw missing) + rules populated — install \`chainsaw\` for orchestrator fit |\n"
 elif command -v hayabusa >/dev/null 2>&1; then
-    printf "| sigma-hunting | YELLOW | hayabusa present but chainsaw missing — install \`chainsaw\` for orchestrator fit |\n"
+    printf "| sigma-hunting | YELLOW | hayabusa present but chainsaw missing AND \`/opt/sigma-rules/\` empty/missing |\n"
 else
-    printf "| sigma-hunting | RED | neither chainsaw nor hayabusa on PATH — install one (see CLAUDE.md tool table) |\n"
+    printf "| sigma-hunting | RED | neither chainsaw nor hayabusa on PATH — install one and populate \`/opt/sigma-rules/\` |\n"
 fi
 
 # windows-artifacts — green if EZ Tools present, yellow if only fallbacks
@@ -459,17 +507,19 @@ else
     printf "SKILL_STATUS:memory-analysis=RED\n"
 fi
 
-# yara-hunting
-if command -v yara >/dev/null 2>&1; then
+# yara-hunting — binary AND /opt/yara-rules/ populated
+if command -v yara >/dev/null 2>&1 && [[ "${YARA_RULES_OK:-0}" -eq 1 ]]; then
     printf "SKILL_STATUS:yara-hunting=GREEN\n"
+elif command -v yara >/dev/null 2>&1; then
+    printf "SKILL_STATUS:yara-hunting=YELLOW\n"
 else
     printf "SKILL_STATUS:yara-hunting=RED\n"
 fi
 
-# sigma-hunting
-if command -v chainsaw >/dev/null 2>&1; then
+# sigma-hunting — binary AND /opt/sigma-rules/ populated
+if command -v chainsaw >/dev/null 2>&1 && [[ "${SIGMA_RULES_OK:-0}" -eq 1 ]]; then
     printf "SKILL_STATUS:sigma-hunting=GREEN\n"
-elif command -v hayabusa >/dev/null 2>&1; then
+elif command -v chainsaw >/dev/null 2>&1 || command -v hayabusa >/dev/null 2>&1; then
     printf "SKILL_STATUS:sigma-hunting=YELLOW\n"
 else
     printf "SKILL_STATUS:sigma-hunting=RED\n"

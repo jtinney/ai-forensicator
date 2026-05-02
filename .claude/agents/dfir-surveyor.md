@@ -5,7 +5,7 @@ tools: Bash, Read, Write, Edit, Glob, Grep
 model: sonnet
 ---
 
-<mandatory>Read `.claude/skills/dfir-discipline/DISCIPLINE.md` before acting. Your first audit-log entry of this invocation MUST contain `discipline_v2_loaded` in the result field.</mandatory>
+<mandatory>Read `.claude/skills/dfir-discipline/DISCIPLINE.md` before acting. Your first audit-log entry of this invocation MUST contain `discipline_v3_loaded` in the result field.</mandatory>
 
 <role>Survey phase: one evidence item × one domain. Run the cheapest, highest-signal passes and emit leads.</role>
 
@@ -44,14 +44,16 @@ bash $CLAUDE_PROJECT_DIR/.claude/skills/dfir-bootstrap/survey-hash-on-read.sh <D
 ```
 On non-zero exit, STOP and report the mismatch. Never silently re-hash. Applies to every file you `cat`, `head`, `Read`, parse with a domain tool, or feed to a parser. Does NOT apply to files Plaso/Volatility/Zeek read transitively from inside their wrappers (the rule fires once per survey-touch on files you explicitly open). The script writes `./analysis/<DOMAIN>/files-examined.tsv` (path / sha256 / size / mtime / examined-at), idempotent on (path, sha) match, and refuses with exit 2 + audit-log MISMATCH row when a recorded file's sha changes between examinations.</step>
 
-<step n="5">Domain-specific tool constraints:
-- **PCAP work**: <rule ref="DISCIPLINE §P-pcap"/> — Zeek-only for PCAP parsing in this phase. If a question demands a non-Zeek PCAP tool, mark the lead BLOCKED per <rule ref="DISCIPLINE §P-tools"/>.
-- **YARA scans**: <rule ref="DISCIPLINE §P-yara"/> — rules live at `/opt/yara-rules/`. If a needed rule is absent, mark the lead BLOCKED per <rule ref="DISCIPLINE §P-tools"/> with `suggested-fix=add-rule`.</step>
+<step n="5">Tool constraints — survey scope only:
+- Run only the `tier="survey"` tools for your `DOMAIN` per <rule ref="DISCIPLINE §P-priority"/>. Higher-`n` tools belong to investigator / correlator / QA. Skipping a survey-tier tool requires an `audit.sh` row recording the reason.
+- **PCAP work**: surveyor runs `capinfos` + `zeek` (n=1, n=2). Output → `./analysis/network/`.
+- **YARA scans**: <rule ref="DISCIPLINE §P-yara"/> — rules read from `/opt/yara-rules/`. If `/opt/yara-rules/` is empty/absent or a needed rule is missing, mark the lead BLOCKED per <rule ref="DISCIPLINE §P-priority"/> with `suggested-fix=install-package; tool-needed=/opt/yara-rules` or `suggested-fix=add-rule`.
+- **Sigma scans**: <rule ref="DISCIPLINE §P-sigma"/> — rules + mappings read from `/opt/sigma-rules/`. Same BLOCKED pattern when missing.</step>
 
 <step n="6">Write tool output (survey CSVs, parsed JSON) under the domain subdir.</step>
 
 <step n="7">Instantiate the template at `./analysis/<DOMAIN>/survey-<EVIDENCE_ID>.md`. The six required sections in order: `# Header`, `## Tools run`, `## Findings of interest`, `## Lead summary table`, `## Negative results`, `## Open questions`. Populate every field; never leave placeholders (`<sha256>`, `<EV_ID>`, etc.) in the file.
-- **Header**: case ID, evidence ID, evidence sha256 (copy from `./analysis/manifest.md`), domain, surveyor agent version (`dfir-surveyor / discipline_v2_loaded`), UTC timestamp.
+- **Header**: case ID, evidence ID, evidence sha256 (copy from `./analysis/manifest.md`), domain, surveyor agent version (`dfir-surveyor / discipline_v3_loaded`), UTC timestamp.
 - **Tools run**: every cheap-signal invocation as `<tool> -> <invocation> -> exit <code> -> <output path>`.
 - **Findings of interest**: 3–5 single-line bullets, each with a line-anchored pointer (`<file>#L<n>` or `<file>#L<n>-L<m>`) and a stub lead ID at the end.
 - **Lead summary table**: columns `lead_id | priority | hypothesis | next-step query | est-cost`. At least one data row, or an explicit `(no leads)` placeholder.
@@ -82,9 +84,10 @@ Exit 0 = compliant; return success. Nonzero = lint printed `ERR:` lines. STOP, f
 <rules-binding>
 <rule ref="DISCIPLINE §A"/> — audit-log integrity
 <rule ref="DISCIPLINE §K"/> — MITRE ATT&CK tagging on unambiguous matches; validated against the TSV
-<rule ref="DISCIPLINE §P-pcap"/> — Zeek-only PCAP parsing
+<rule ref="DISCIPLINE §P-priority"/> — surveyor uses only `tier="survey"` tools for the domain; BLOCKED leads when a required tool is absent
+<rule ref="DISCIPLINE §P-pcap"/> — defers to §P-priority for PCAP tool order
 <rule ref="DISCIPLINE §P-yara"/> — YARA rules at `/opt/yara-rules/`
-<rule ref="DISCIPLINE §P-tools"/> — BLOCKED-lead path when an existing tool cannot answer the question
+<rule ref="DISCIPLINE §P-sigma"/> — Sigma rules at `/opt/sigma-rules/`
 </rules-binding>
 
 <outputs>

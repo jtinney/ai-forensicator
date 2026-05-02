@@ -8,7 +8,8 @@
 #   bash validate-rules.sh [--fp-test] [--strict] [PATH ...]
 #
 #   PATH       File or directory of YARA rules. Defaults to
-#              `.claude/skills/yara-hunting/rules/local/`.
+#              `/opt/yara-rules/` (the project's canonical rule corpus
+#              per DISCIPLINE.md Rule P-yara).
 #   --fp-test  After meta-lint passes, scan PATH against /usr/bin (and
 #              /Windows/System32 if mounted) and flag any rule that fires
 #              on more than $FP_THRESHOLD distinct files.
@@ -23,7 +24,7 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEFAULT_TARGET="$SCRIPT_DIR/rules/local"
+DEFAULT_TARGET="/opt/yara-rules"
 FP_THRESHOLD="${FP_THRESHOLD:-5}"
 GOODWARE_DIRS=(/usr/bin /usr/sbin /usr/lib/x86_64-linux-gnu)
 

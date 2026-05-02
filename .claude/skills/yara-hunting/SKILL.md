@@ -1,5 +1,12 @@
 # Skill: Threat Hunting & IOC Sweeps (YARA / Velociraptor)
 
+<protocol>
+  <rule>Rules live at <code>/opt/yara-rules/</code>. See DISCIPLINE.md §P-yara.</rule>
+  <rule>Tool order is the <code>yara-hunting</code> entry of DISCIPLINE.md §P-priority. Surveyor runs <code>yara -r /opt/yara-rules/ &lt;target&gt;</code>.</rule>
+  <rule>Hits go to <code>./exports/yara_hits/</code>. Summaries to <code>./analysis/yara/</code>.</rule>
+  <rule>Do not author, cache, or vendor rules inside the project workspace. Operator maintains <code>/opt/yara-rules/</code> via the SIFT install script.</rule>
+</protocol>
+
 ## Use this skill when
 - You have *at least one* concrete indicator (hash, mutex, named pipe, unique
   string, distinctive code pattern, registry path) and want to sweep the rest
@@ -12,21 +19,21 @@
 
 **Don't reach for YARA when** you have no indicators yet — it's a *confirm and
 expand* tool, not a discovery tool. Don't sweep the entire image with the
-ProjectHoneynet ruleset on day 1; the false-positive triage will eat the case.
+full ruleset on day 1; the false-positive triage will eat the case.
 
 ## Tool selection — pick by question
 
 | Question | Best invocation | Why |
 |---|---|---|
-| Is this one file malicious? | `yara -s rules.yar <file>` | `-s` shows matched offsets — needed to validate the rule actually fired on the right bytes |
-| Sweep extracted files for an IOC family | `yara -r -s -p 4 rules.yar ./exports/files/` | `-p` parallelizes; `-s` keeps you honest |
-| Sweep a memory image | `yara rules.yar /path/to/memory.img` | Hits include strings injected into RWX VADs that may not exist on disk |
-| Sweep VAD regions of one process (no dump) | `vol windows.vadyarascan --pid <PID> --yara-rules rules.yar` | Cheaper than `memmap --dump` then YARA |
-| Sweep VAD regions of every process | `vol windows.vadyarascan --yara-rules rules.yar` | One-shot wide scan |
-| Repeated scans of large corpus | `yarac rules.yar compiled.rules` then `yara -C compiled.rules <target>` | Avoids re-parsing rule source each run |
-| Sweep just unallocated space | `blkls -A <image>.E01 > unalloc.raw` then `yara rules.yar unalloc.raw` | Carved indicators in slack |
-| Hash-based IOC match | rule with `import "hash"` and `hash.sha256(0, filesize) == "..."` | When you have the hash and want the path |
-| Validate scope of a rule before sweeping | `yara -r -n rules.yar /usr/bin/` | `-n` shows non-matches — confirms you're not catching the universe |
+| Is this one file malicious? | `yara -s /opt/yara-rules/ <file>` | `-s` shows matched offsets — validates the rule fired on the right bytes |
+| Sweep extracted files for an IOC family | `yara -r -s -p 4 /opt/yara-rules/ ./exports/files/` | `-p` parallelizes; `-s` keeps you honest |
+| Sweep a memory image | `yara /opt/yara-rules/ /path/to/memory.img` | Hits include strings injected into RWX VADs that may not exist on disk |
+| Sweep VAD regions of one process (no dump) | `vol windows.vadyarascan --pid <PID> --yara-rules /opt/yara-rules/<scope>/<rule>.yar` | Cheaper than `memmap --dump` then YARA |
+| Sweep VAD regions of every process | `vol windows.vadyarascan --yara-rules /opt/yara-rules/<scope>/<rule>.yar` | One-shot wide scan |
+| Repeated scans of large corpus | `yarac /opt/yara-rules/<scope>/<rule>.yar ./analysis/yara/<scope>.compiled` then `yara -C ./analysis/yara/<scope>.compiled <target>` | Avoids re-parsing rule source each run |
+| Sweep just unallocated space | `blkls -A <image>.E01 > unalloc.raw` then `yara /opt/yara-rules/ unalloc.raw` | Carved indicators in slack |
+| Tag-scoped sweep (narrow) | `yara -r -t <tag> /opt/yara-rules/ <target>` | Apply only the rules carrying TAG |
+| Validate scope of a rule before sweeping | `yara -r -n /opt/yara-rules/<scope>/ /usr/bin/` | `-n` shows non-matches — confirms you're not catching the universe |
 
 **Order conditions cheap → expensive in every rule:**
 `uint16(0) == 0x5A4D` → `filesize < N` → `pe.is_pe` → string match → `math.entropy(...)`.
@@ -196,32 +203,32 @@ rule Known_Bad_Hash
 
 ### Scan a Single File
 ```bash
-yara /path/to/rules.yar /path/to/file
+yara -r /opt/yara-rules/ /path/to/file
 ```
 
 ### Scan a Directory Recursively
 ```bash
-yara -r /path/to/rules.yar /mnt/windows_mount/Windows/System32/
+yara -r /opt/yara-rules/ /mnt/windows_mount/Windows/System32/
 ```
 
 ### Scan a Memory Image
 ```bash
-yara /path/to/rules.yar /path/to/memory.img
+yara -r /opt/yara-rules/ /path/to/memory.img
 ```
 
 ### Scan Exported Files from Evidence
 ```bash
-yara -r /path/to/rules.yar ./exports/files/
+yara -r /opt/yara-rules/ ./exports/files/
 ```
 
 ### Scan with Match Detail (Show Matching Strings)
 ```bash
-yara -r -s /path/to/rules.yar ./exports/files/ 2>/dev/null | tee ./exports/yara_hits/hits.txt
+yara -r -s /opt/yara-rules/ ./exports/files/ 2>/dev/null | tee ./exports/yara_hits/yara-EV01.txt
 ```
 
 ### Scan with Metadata Output
 ```bash
-yara -r -m /path/to/rules.yar /mnt/windows_mount/ 2>/dev/null
+yara -r -m /opt/yara-rules/ /mnt/windows_mount/ 2>/dev/null
 ```
 
 ### Useful Flags
@@ -247,11 +254,13 @@ yara -r -m /path/to/rules.yar /mnt/windows_mount/ 2>/dev/null
 ## Rule Compilation (Repeated Large-Scale Scanning)
 
 ```bash
-# Compile rules to binary for faster re-use (avoids re-parsing .yar each run)
-yarac rules.yar compiled.rules
+# Compile rules to binary for faster re-use (avoids re-parsing .yar each run).
+# Source rules read from /opt/yara-rules/; compiled output is a per-case
+# byte artifact tracked in analysis/yara/.
+yarac /opt/yara-rules/<scope>/<rule>.yar ./analysis/yara/<scope>.compiled
 
 # Scan using compiled rules
-yara -C compiled.rules /target/path/
+yara -C ./analysis/yara/<scope>.compiled /target/path/
 ```
 
 ---
@@ -280,79 +289,38 @@ condition:
 
 ## Rule enumeration gate (run BEFORE any scan)
 
-Before any `yara` invocation, enumerate the rule library and record what
-is available. An in-memory mental model of the rule set leaves the audit
-trail unable to prove which rules fired and which did not — record the
-enumeration on disk so a future examiner can reconstruct the scan.
+Before any `yara` invocation, enumerate the rule corpus at `/opt/yara-rules/`
+so the audit trail records exactly what was available at scan time. If the
+directory is missing or empty, preflight reports `yara-hunting: RED/YELLOW`;
+the surveyor BLOCKS its lead per §P-priority with
+`suggested-fix=install-package; tool-needed=/opt/yara-rules`.
 
 ```bash
 mkdir -p ./analysis/yara
 
 {
     echo "# YARA rule enumeration — $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-    echo
-
-    for ns in local vendor quarantine legacy; do
-        nsdir=".claude/skills/yara-hunting/rules/$ns"
-        echo "## namespace: $ns"
-        if [[ -d "$nsdir" ]]; then
-            ls -la "$nsdir"
-            find "$nsdir" \( -name '*.yar' -o -name '*.yara' -o -name '*.rules' \) \
-                -printf '\n=== %p ===\n' \
-                -exec head -25 {} \;
-        else
-            echo "(directory missing)"
-        fi
+    echo "## corpus root: /opt/yara-rules/"
+    if [[ -d /opt/yara-rules ]]; then
+        find /opt/yara-rules -type f \( -name '*.yar' -o -name '*.yara' \) \
+            | sort
         echo
-    done
-
-    echo "## case-local rules under ./analysis/yara/"
-    if compgen -G './analysis/yara/*.yar' >/dev/null \
-       || compgen -G './analysis/yara/*.yara' >/dev/null; then
-        ls -la ./analysis/yara/*.yar ./analysis/yara/*.yara 2>/dev/null
+        echo "rule files: $(find /opt/yara-rules -type f \( -name '*.yar' -o -name '*.yara' \) | wc -l)"
     else
-        echo "(none)"
-    fi
-
-    echo
-    echo "## vendor manifest"
-    if [[ -f .claude/skills/yara-hunting/rules/vendor/vendor-manifest.json ]]; then
-        cat .claude/skills/yara-hunting/rules/vendor/vendor-manifest.json
-    else
-        echo "(no vendored sets pulled — see vendor-rules.sh)"
+        echo "(missing — preflight RED)"
     fi
 } > ./analysis/yara/rules-enumerated.txt
 
 # Validate the rule library before scanning. Errors here mean the rule set
 # itself is broken; refuse to scan with a broken library.
 bash .claude/skills/yara-hunting/validate-rules.sh \
-    .claude/skills/yara-hunting/rules/local/ \
-    ./analysis/yara/ \
     > ./analysis/yara/validate-rules.txt 2>&1 \
     || echo "WARN: validate-rules.sh reported errors — see analysis/yara/validate-rules.txt"
 
 bash .claude/skills/dfir-bootstrap/audit.sh \
-    "yara-rule-enumeration" \
-    "enumerated local/vendor/quarantine/legacy + case-local rules — see analysis/yara/rules-enumerated.txt" \
-    "select namespaces in scope; compile via yarac before scan"
-```
-
-**Namespace discipline.** Default scans should load
-`rules/local/` (always reusable). Vendored sets under `rules/vendor/<source>/`
-are loaded explicitly. `rules/quarantine/` and `rules/legacy/` are NEVER
-loaded by default. Case-local rules under `./analysis/yara/` are scoped to
-the current evidence set only.
-
-If `rules/local/` is empty AND no case-local rules exist AND no vendor sets
-have been pulled, the scan is a discipline failure — STOP and pull a vendor
-set (`vendor-rules.sh`) or request rules from the case lead rather than
-running yara with no signatures.
-
-**Compile once, scan many.** For corpora over ~1 GB:
-
-```bash
-yarac ./analysis/yara/rules-EV01.yar ./analysis/yara/rules-EV01.compiled
-yara -C ./analysis/yara/rules-EV01.compiled <target>     # uses compiled
+    "yara-rule-enumeration /opt/yara-rules/" \
+    "enumerated $(wc -l < ./analysis/yara/rules-enumerated.txt) lines — see analysis/yara/rules-enumerated.txt" \
+    "scope per evidence question; compile via yarac for repeat scans"
 ```
 
 `rules-enumerated.txt` is in the baseline-artifact contract for this skill
@@ -365,91 +333,73 @@ to emit `L-BASELINE-yara-NN`.
 ## IOC Sweep Workflow
 
 1. **Build IOC list** from confirmed findings (file hashes, strings, IPs, domains, paths, mutex names)
-2. **Write YARA rules** targeting each IOC type — one rule per indicator family
-3. **Test rules for false positives** against a clean image or known-good file set first
-4. **Scan mounted evidence** — `yara -r -s <rules> /mnt/windows_mount/`
-5. **Scan memory image** — `yara <rules> /path/to/memory.img`
-6. **Scan extracted files** — `yara -r <rules> ./exports/files/`
+2. **Author rules** targeting each IOC family in `/opt/yara-rules/<scope>/` (operator action — out-of-band)
+3. **Test rules for false positives** against `/usr/bin/` or another known-clean target first
+4. **Scan mounted evidence** — `yara -r -s /opt/yara-rules/ /mnt/windows_mount/`
+5. **Scan memory image** — `yara -r /opt/yara-rules/ /path/to/memory.img`
+6. **Scan extracted files** — `yara -r /opt/yara-rules/ ./exports/files/`
 7. **Cross-reference hits** with filesystem timeline and process artifacts
-8. **Export findings** to `./exports/yara_hits/ioc_sweep_<CASE_ID>_<date>.txt`
+8. **Export findings** to `./exports/yara_hits/yara-EV<NN>.txt`
 
 ### False Positive Testing
 
 ```bash
 # Test rules against a known-clean directory before sweeping evidence
-yara -r rules.yar /usr/bin/ 2>/dev/null
+yara -r /opt/yara-rules/<scope>/ /usr/bin/ 2>/dev/null
 
 # Use -n to see which rules did NOT match (verify scope coverage)
-yara -r -n rules.yar /path/to/sample/
+yara -r -n /opt/yara-rules/<scope>/ /path/to/sample/
 
 # Test a single rule in isolation
-yara -r /path/to/single_rule.yar /path/to/target/
+yara -r /opt/yara-rules/<scope>/<single_rule>.yar /path/to/target/
 ```
 
 ---
 
 ## Rule library layout
 
-The skill rule library is namespace-partitioned so that every scan can be
-scoped intentionally and the audit trail records exactly which namespaces
-fired:
-
 ```
-.claude/skills/yara-hunting/rules/
-├── local/        — project-vetted, in-house rules (tracked in git)
-├── vendor/       — third-party upstream sets, populated by vendor-rules.sh
-│                   (gitignored by default — license terms vary, operator
-│                    must `git add -f` to commit a vendored set)
-├── quarantine/   — rules disabled for FP / scope problems (tracked in git
-│                   as historical record, never loaded into scans)
-└── legacy/       — historical case-specific rules retained for chain of
-                    custody. NOT included in default sweeps.
+/opt/yara-rules/                   ← canonical rule corpus (operator-maintained, populated by SIFT install)
+└── <scope>/<rule>.yar             ← operator-organized subdirs (by tactic, family, or source)
 ```
 
-**Per-case output (follows the canonical layer model in
-`.claude/skills/dfir-discipline/DISCIPLINE.md` "Layer model" subsection):**
+**Per-case output (follows the layer model in DISCIPLINE.md Rule A):**
 ```
-./analysis/yara/                         ← per-case rules + scan summaries (layer 3)
-./analysis/yara/rules-EV01.yar           ← case-local rules (one per evidence)
-./analysis/yara/rules-EV01.compiled      ← yarac-compiled binary
-./analysis/yara/yara-hits-EV01.txt       ← scan hit summaries
+./analysis/yara/                         ← per-case scan summaries + compiled rulesets (layer 3)
+./analysis/yara/<scope>.compiled         ← yarac-compiled binary (per-case build of /opt/yara-rules/)
+./analysis/yara/yara-hits-EV01.txt       ← scan hit summary
 ./analysis/yara/rules-enumerated.txt     ← required baseline (see § gate)
-./exports/yara_hits/                     ← byte extracts of files that matched (layer 4)
+./exports/yara_hits/yara-EV01.txt        ← scan hit byte extract (layer 4)
+./exports/yara_hits/EV01/                ← per-rule byte trees (multi-evidence)
 ./reports/                               ← finalized IOC sweep reports
 ```
 
-Multi-evidence cases append the EVID per Rule L: hit summaries
-`yara-hits-EV02.txt` are sibling files; byte-extract subdirs are
-`exports/yara_hits/EV01/`, `exports/yara_hits/EV02/`.
-
-A scan that loads `rules/local/` + `rules/vendor/<source>/` is **reusable**.
-A scan that loads `rules/legacy/` is **not** — those files contain
-case-tied indicators (filenames, hostnames, hashes) that would generate
-false positives outside the originating case.
+Multi-evidence cases follow Rule L: hit summaries are `yara-hits-EV02.txt`
+sibling files; byte-extract subdirs are `exports/yara_hits/EV01/`,
+`exports/yara_hits/EV02/`.
 
 ---
 
-## Rule conventions (mandatory for `rules/local/`)
+## Rule conventions
 
 See `reference/rule-conventions.md` for the full convention: required and
 recommended `meta` keys, tag vocabulary (Scope / Format / Stage / Severity /
-Family), naming convention by provenance, the performance contract
-(cheap→expensive condition ordering), and the false-positive contract.
-`validate-rules.sh` enforces the required keys and runs `yarac` for syntax.
+Family), naming, performance contract (cheap→expensive condition ordering),
+false-positive contract. The operator enforces these at the `/opt/yara-rules/`
+boundary; `validate-rules.sh` runs against `/opt/yara-rules/` to confirm.
 
 ---
 
 ## Rule validation (`validate-rules.sh`)
 
-Run before committing any change to `rules/local/` and as part of the
-case-bootstrap rule-enumeration gate (see below):
+Default target is `/opt/yara-rules/`.
 
 ```bash
-# Validate every rule in rules/local/
+# Validate every rule under /opt/yara-rules/
 bash .claude/skills/yara-hunting/validate-rules.sh
 
-# Validate case-local rules
-bash .claude/skills/yara-hunting/validate-rules.sh ./analysis/yara/
+# Validate a specific path (e.g. a subset of /opt/yara-rules/)
+bash .claude/skills/yara-hunting/validate-rules.sh /opt/yara-rules/malware/
 
 # Strict mode — also requires `reference` and `mitre`
 bash .claude/skills/yara-hunting/validate-rules.sh --strict
@@ -471,17 +421,6 @@ Exit 0 on clean, 1 on errors, 2 on bad invocation.
 
 ---
 
-## Vendoring upstream rule sets (`vendor-rules.sh`)
-
-See `reference/vendor-sources.md` for the full vendoring workflow:
-`vendor-rules.sh` invocations (default / `--with elastic` / `--verify-only` /
-`--list` / `--clean`), the reputable-upstream-sources table (yara-forge,
-signature-base, Elastic, ReversingLabs, Volexity/Mandiant, CISA), the
-`vendor-manifest.json` integrity model, and tag-based scoping for vendored
-sets at scan time.
-
----
-
 ## Required baseline artifacts
 
 This block is parsed by `.claude/skills/dfir-bootstrap/baseline-check.sh yara`.
@@ -491,10 +430,10 @@ first in the next investigator wave.
 <!-- baseline-artifacts:start -->
 required: analysis/yara/rules-enumerated.txt
 required: analysis/yara/validate-rules.txt
-optional: analysis/yara/rules-EV01.yar
-optional: analysis/yara/rules-EV01.compiled
+optional: analysis/yara/<scope>.compiled
 optional: analysis/yara/yara-hits-EV01.txt
 optional: analysis/yara/survey-EV01.md
+optional: exports/yara_hits/yara-EV01.txt
 <!-- baseline-artifacts:end -->
 
 ---
