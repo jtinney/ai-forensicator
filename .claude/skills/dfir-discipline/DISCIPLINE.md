@@ -55,7 +55,7 @@ deterministically without consulting the project README.
 | # | Layer | Path | Origin | Mutability | Integrity ledger | Hook |
 |---|-------|------|--------|------------|------------------|------|
 | 1 | Original evidence | `./evidence/` | Operator drop at intake | Read-only after intake (`chmod a-w` recursive) | `analysis/manifest.md` | Permission deny + filesystem lock |
-| 2 | Bundle expansion | `./analysis/_extracted/<bundle>/` | `case-init.sh` expanding archives at intake | Read-only by convention | `analysis/manifest.md` (`bundle-member` rows) | None — manifest-locked at write-once intake |
+| 2 | Bundle expansion | `./working/<bundle>/` | `case-init.sh` expanding archives at intake | Read-only by convention | `analysis/manifest.md` (`bundle-member` rows) | None — manifest-locked at write-once intake |
 | 3 | Tool reports | `./analysis/<domain>/` | Surveyor + investigator output (CSVs, JSON, `findings.md`, `survey-EVnn.md`) | Mutable (recomputable) | None — by design | audit-log hooks only |
 | 4 | Derived artifacts | `./exports/<domain>/...` | Carved bytes, exported hives, dumped memory regions, sliced pcaps, reassembled HTTP objects | Write-once; mutation = chain-of-custody concern | `analysis/exports-manifest.md` | `audit-exports.sh` PostToolUse, depth-unbounded |
 | 5 | Reports | `./reports/` | Final deliverables (`final.md`, `stakeholder-summary.md`, `qa-review.md`, `00_intake.md`) | Mutable | None | None |
@@ -97,7 +97,7 @@ row is itself a chain-of-custody concern that warrants investigation.
 
 **Why a separate manifest:** `./analysis/manifest.md` tracks *original*
 evidence (intake hashes of files in `./evidence/` and bundle members in
-`./analysis/_extracted/`). `./analysis/exports-manifest.md` tracks
+`./working/`). `./analysis/exports-manifest.md` tracks
 *derivative* evidence — the chain is layered (original → extracted →
 conclusion). Conflating them would lose the layer.
 
@@ -530,7 +530,7 @@ itself emits a tree we don't control.
   `manifest-check.sh`. The script runs in three places: (1) the
   `/case` slash-command after `case-init.sh`, refusing to dispatch
   agents when the manifest is broken; (2) the PreToolUse Bash hook,
-  refusing reads against `./evidence/` or `./analysis/_extracted/`
+  refusing reads against `./evidence/` or `./working/`
   when the manifest is broken; (3) the QA phase, which surfaces any
   remaining violations into `qa-review.md`. Bespoke hash files
   outside the canonical ledger (`analysis/archive_hashes.txt` and

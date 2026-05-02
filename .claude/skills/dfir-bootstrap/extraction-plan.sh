@@ -3,15 +3,15 @@
 #
 # Walks ./evidence/ depth-unbounded for archive bundles (zip / tar / tar.gz /
 # tar.bz2 / 7z), estimates the decompressed total, and compares against free
-# disk at ./analysis/_extracted/. Writes ./analysis/extraction-plan.md with one
+# disk at ./working/. Writes ./analysis/extraction-plan.md with one
 # of three plan modes -- bulk, sequential, or blocked -- and (when blocked)
 # appends a BLOCKED row to ./analysis/leads.md.
 #
-# Layer-2 framing: archive bundles unpack into ./analysis/_extracted/<base>/.
+# Layer-2 framing: archive bundles unpack into ./working/<base>/.
 # That tree IS layer-2 evidence-grade staging tracked by manifest.md, NOT
 # layer-4 derived artifacts. Per the project's five-layer model, bundle
 # members are original evidence, just unpacked -- not exports. This planner
-# therefore plans against analysis/_extracted/, not exports/.
+# therefore plans against working/, not exports/.
 #
 # Modes
 #   bulk        sum + headroom <= free.                      Phase 1 extracts everything.
@@ -43,7 +43,7 @@
 set -u
 
 EVIDENCE_DIR="./evidence"
-EXTRACT_DIR="./analysis/_extracted"
+EXTRACT_DIR="./working"
 PLAN_FILE="./analysis/extraction-plan.md"
 LEADS="./analysis/leads.md"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
@@ -229,7 +229,7 @@ UTC_NOW="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
 | Required (total + headroom) | $(hsize "$NEED_BYTES") (${NEED_BYTES} bytes) |
 | Free at \`${EXTRACT_DIR}\` | $(hsize "$FREE_BYTES") (${FREE_BYTES} bytes) |
 
-> **Layer-2 staging.** Bundle expansion lands at \`./analysis/_extracted/<basename>/\`.
+> **Layer-2 staging.** Bundle expansion lands at \`./working/<basename>/\`.
 > Per the project's five-layer model, bundle members are layer-2 evidence-grade
 > staging (tracked by \`manifest.md\`), NOT layer-4 derived artifacts. The planner
 > sizes against the analysis partition for that reason.
@@ -323,7 +323,7 @@ should surface lead \`L-EXTRACT-DISK-01\` to the operator.
 
 Resolution paths:
 1. Free enough disk to satisfy the delta; re-run \`extraction-plan.sh\`.
-2. Mount a larger volume at \`./analysis/_extracted/\` and re-run.
+2. Mount a larger volume at \`./working/\` and re-run.
 3. Decline the case if neither (1) nor (2) is feasible.
 
 EOF

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # DFIR case scaffold — idempotent; safe to re-run.
-# Creates ./analysis, ./exports, ./reports with the layout every skill expects
+# Creates ./working, ./analysis, ./exports, ./reports with the layout every skill expects
 # and seeds forensic_audit.log with a header. Does NOT pre-create findings.md
 # files: the surveyor and investigator phases write them on first append, so an
 # empty / missing findings.md unambiguously means "no analyst output yet."
 #
 # Layout: this project uses a master `cases/` directory; each case lives
-# under `cases/<CASE_ID>/` with its own `evidence/`, `analysis/`, `exports/`,
-# `reports/`. case-init.sh auto-resolves the case dir under the project root
+# under `cases/<CASE_ID>/` with its own `evidence/`, `working/`, `analysis/`,
+# `exports/`, `reports/`. case-init.sh auto-resolves the case dir under the project root
 # (located via $CLAUDE_PROJECT_DIR or by walking up for a `.claude/` marker)
 # and cd's into it before scaffolding. Run from anywhere inside the project;
 # the script does the right thing.
@@ -76,7 +76,7 @@ dirs=(
     "./analysis/sigma"
     "./analysis/sigma/jsonl"
     "./analysis/sigma/hits"
-    "./analysis/_extracted"
+    "./working"
     "./exports"
     # Canonical exports/ taxonomy — see dfir-discipline/DISCIPLINE.md
     # "Layer model" subsection. Pre-scaffolded so domain skills do not
@@ -171,7 +171,7 @@ fi
 
 # ---------- evidence bundle expansion + per-member hashing ----------
 # When ./evidence/ contains an archive (zip/tar/tar.gz/tar.bz2/7z), expand it
-# under ./analysis/_extracted/<basename>/ so analytic units (each member) can
+# under ./working/<basename>/ so analytic units (each member) can
 # be hashed and tracked individually. Idempotent: skips if dest non-empty.
 # Disk-bounded: skips if estimated expanded size > 50% of free disk.
 #
@@ -185,7 +185,7 @@ fi
 # direct `case-init.sh` calls outside the orchestrator remain unchanged.
 BULK_EXTRACT="${BULK_EXTRACT:-1}"
 EVIDENCE_DIR="./evidence"
-EXTRACT_DIR="./analysis/_extracted"
+EXTRACT_DIR="./working"
 MANIFEST="./analysis/manifest.md"
 
 # Initialize manifest.md (header) if not already present. Triage may also

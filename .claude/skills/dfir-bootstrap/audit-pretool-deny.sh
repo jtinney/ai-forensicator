@@ -85,7 +85,7 @@ fi
 
 # ---- manifest gate (issue #12) ----
 # When the proposed Bash command's argv references ./evidence/ or
-# ./analysis/_extracted/, run manifest-check.sh --quiet. If the manifest
+# ./working/, run manifest-check.sh --quiet. If the manifest
 # is broken (missing rows, bespoke hash files, partial expansion, etc.)
 # refuse the command — agents must not read evidence on top of an
 # untrustworthy ledger.
@@ -104,10 +104,10 @@ if printf '%s' "$cmd" | grep -qE '(manifest-check\.sh|case-init\.sh|extraction-p
 fi
 
 # Match argv tokens that reference the two protected directories. Pin to
-# ./evidence/ or evidence/ and ./analysis/_extracted/ or analysis/_extracted/
+# ./evidence/ or evidence/ and ./working/ or working/
 # (with optional leading dot-slash). The pattern is deliberately narrow so
 # benign mentions in stdin / quoted strings don't trigger the check.
-TARGET_RE='(^|[[:space:]=])(\.?\/)?(evidence|analysis\/_extracted)\/'
+TARGET_RE='(^|[[:space:]=])(\.?\/)?(evidence|working)\/'
 if printf '%s' "$cmd" | grep -qE "$TARGET_RE"; then
     SCRIPT_DIR_HOOK="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
     MANIFEST_CHECK="${SCRIPT_DIR_HOOK}/manifest-check.sh"
@@ -121,7 +121,7 @@ if printf '%s' "$cmd" | grep -qE "$TARGET_RE"; then
             cat >&2 <<EOF
 PreToolUse DENY: manifest integrity check failed.
 
-The proposed command references ./evidence/ or ./analysis/_extracted/, but
+The proposed command references ./evidence/ or ./working/, but
 analysis/manifest.md is incomplete (missing rows, partial bundle expansion,
 or a bespoke hash file lives outside the canonical ledger).
 
@@ -133,7 +133,7 @@ $(printf '%s\n' "$check_stderr" | sed 's/^/  /')
 
 Resolution paths:
   - case-init.sh-side issues (missing manifest rows, partial expansion):
-      operator clears analysis/_extracted/<basename>/ then re-runs
+      operator clears working/<basename>/ then re-runs
       bash .claude/skills/dfir-bootstrap/case-init.sh <CASE_ID>
   - bespoke hash file: reconcile its rows into manifest.md, then remove
     the bespoke file (do NOT blindly delete — it may carry real work).

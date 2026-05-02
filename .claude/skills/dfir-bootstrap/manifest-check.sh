@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # manifest-check.sh — verify that ./analysis/manifest.md is a complete and
-# trustworthy ledger of every byte under ./evidence/ + ./analysis/_extracted/.
+# trustworthy ledger of every byte under ./evidence/ + ./working/.
 #
 # Walks evidence/ depth-unbounded and confirms:
 #   1. every regular file under evidence/ has a row in manifest.md keyed by
@@ -10,7 +10,7 @@
 #   2. every archive (zip / tar / 7z / gzip-tar) has a `bundle:<kind>` row
 #      AND at least one `bundle-member` row keyed `<ev_id>-M001..M###`
 #   3. the bundle-member count for each archive matches the on-disk
-#      `find analysis/_extracted/<basename>/ -type f | wc -l` count
+#      `find working/<basename>/ -type f | wc -l` count
 #   4. no row has `sha256 = -` UNLESS there is a documented `bundle-skipped`
 #      reason in analysis/leads.md acknowledged by the operator (agent-only
 #      acknowledgements are rejected — yields to operator only, mirroring
@@ -69,7 +69,7 @@ esac
 
 ANALYSIS_DIR="./analysis"
 EVIDENCE_DIR="./evidence"
-EXTRACT_DIR="${ANALYSIS_DIR}/_extracted"
+EXTRACT_DIR="./working"
 MANIFEST="${ANALYSIS_DIR}/manifest.md"
 LEADS="${ANALYSIS_DIR}/leads.md"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
@@ -205,7 +205,7 @@ def classify_archive(path):
     return None
 
 # For each archive, check (a) bundle row exists, (b) >=1 bundle-member row,
-# (c) member count matches on-disk count under analysis/_extracted/<basename>/.
+# (c) member count matches on-disk count under working/<basename>/.
 for w in walked:
     rel = w["rel"]
     legacy_abs = w["legacy_abs"]
@@ -241,11 +241,11 @@ for w in walked:
             "kind":     "bundle-no-members",
             "path":     rel,
             "ev_id":    ev_id,
-            "fix":      f"bundle {ev_id} ({rel}) has zero bundle-member rows; re-run case-init.sh after clearing analysis/_extracted/<basename>/",
+            "fix":      f"bundle {ev_id} ({rel}) has zero bundle-member rows; re-run case-init.sh after clearing working/<basename>/",
         })
         continue
 
-    # On-disk count under analysis/_extracted/<basename>/. The basename is
+    # On-disk count under working/<basename>/. The basename is
     # whatever case-init.sh used as the dest_subdir (filename minus
     # extension; .tar.gz / .tar.bz2 strip the .tar too).
     bn = os.path.basename(rel)

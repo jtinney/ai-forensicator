@@ -14,9 +14,9 @@ mkdir -p "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>/evidence"
 cd "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>"
 ```
 
-Every `./evidence/`, `./analysis/`, `./exports/`, `./reports/` path in this
-file (and in the domain skills, agents, and TRIAGE.md) is relative to that
-workspace. Project-level scripts live at
+Every `./evidence/`, `./working/`, `./analysis/`, `./exports/`, `./reports/`
+path in this file (and in the domain skills, agents, and TRIAGE.md) is relative
+to that workspace. Project-level scripts live at
 `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
 
 ## Why phases
@@ -131,7 +131,7 @@ For each stage `N` in the plan's stage table (`1..K`):
    loop against just that one archive (e.g. by feeding a single-element
    evidence subdir) or use the archive-specific extract logic the triage
    agent ran for stage 1. The expanded tree lives at
-   `./analysis/_extracted/<basename>/`. Audit row:
+   `./working/<basename>/`. Audit row:
    `[disk] stage N: extract <archive>` via `bash audit.sh ...`.
 2. **Survey** — fan out Phase 2 (`dfir-surveyor`) only for `(stage-N
    evidence × applicable domains)`. Other stages' archives are not yet
@@ -143,7 +143,7 @@ For each stage `N` in the plan's stage table (`1..K`):
    ```bash
    bash .claude/skills/dfir-bootstrap/extraction-cleanup.sh <basename-of-stage-N>
    ```
-   This deletes only `./analysis/_extracted/<basename>/`. All
+   This deletes only `./working/<basename>/`. All
    `./analysis/<domain>/` (findings, surveys, files-examined.tsv),
    `./exports/**` (carved/dumped artifacts), `./analysis/manifest.md`
    (chain-of-custody rows), and `./analysis/leads.md` are preserved. The
@@ -157,7 +157,7 @@ For each stage `N` in the plan's stage table (`1..K`):
 below) trigger an additional sequential cycle: extract just the named
 archive (and, when the lead names a path subset, optionally only that
 subdir via `unzip <archive> "<subset>/*"` or a `tar --wildcards` filter
-into `./analysis/_extracted/<basename>/`), run a Phase 2/3 mini-wave
+into `./working/<basename>/`), run a Phase 2/3 mini-wave
 scoped to the leads the re-extraction generates, then call
 `extraction-cleanup.sh` to release the bytes again.
 

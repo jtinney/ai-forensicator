@@ -3,14 +3,14 @@
 # extraction mode (issue #4). Invoked by the orchestrator between stage N's
 # Phase 3 (investigators) and stage N+1's Phase 1 (extract).
 #
-# Removes ./analysis/_extracted/<basename>/ and only that directory. Keeps:
+# Removes ./working/<basename>/ and only that directory. Keeps:
 #   - ./analysis/<domain>/findings.md, survey-EV*.md, files-examined.tsv, etc.
 #   - ./exports/**       (extracted artifacts per layer-4 of the folder model)
 #   - ./reports/**
 #   - ./analysis/manifest.md, ./analysis/leads.md, ./analysis/correlation.md
 #   - ./analysis/forensic_audit.log
 #
-# Layer-2 framing: ./analysis/_extracted/<basename>/ is layer-2 evidence-grade
+# Layer-2 framing: ./working/<basename>/ is layer-2 evidence-grade
 # staging. Cleanup removes the staging tree but leaves the manifest rows
 # (chain of custody) and every layer-3 / layer-4 derivation intact. A future
 # re-extraction (e.g. an L-EXTRACT-RE-NN lead) will re-stage the same bytes
@@ -40,7 +40,7 @@ set -u
 BASENAME="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 AUDIT_SH="${SCRIPT_DIR}/audit.sh"
-EXTRACT_DIR="./analysis/_extracted"
+EXTRACT_DIR="./working"
 
 if [[ -z "$BASENAME" ]]; then
     echo "usage: extraction-cleanup.sh <BASENAME>" >&2

@@ -18,10 +18,10 @@ inventory only.
 ## Working directory
 
 The orchestrator places you at the case workspace `./cases/<CASE_ID>/` before
-dispatch. All `./evidence/`, `./analysis/`, `./exports/`, `./reports/` paths
-in this prompt are relative to that workspace. If your CWD is not yet the
-case dir, run `cd "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>"` as your first
-shell action (case-init.sh will also auto-resolve it as a safety net).
+dispatch. All `./evidence/`, `./working/`, `./analysis/`, `./exports/`,
+`./reports/` paths in this prompt are relative to that workspace. If your CWD
+is not yet the case dir, run `cd "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>"` as
+your first shell action (case-init.sh will also auto-resolve it as a safety net).
 Project-level scripts live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
 
 ## Inputs
@@ -49,9 +49,9 @@ Project-level scripts live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
    ```
    Reads `./evidence/` depth-unbounded, sums estimated decompressed size for
    every archive bundle, compares against free disk at
-   `./analysis/_extracted/` (with a 20% headroom budget — override via
+   `./working/` (with a 20% headroom budget — override via
    `HEADROOM_PCT`), and writes `./analysis/extraction-plan.md`. The
-   tree under `./analysis/_extracted/` is **layer-2 evidence-grade
+   tree under `./working/` is **layer-2 evidence-grade
    staging** tracked by `manifest.md`, not `./exports/` (layer-4 derived
    artifacts) — that is why the planner sizes against the analysis
    partition. Three plan modes:
@@ -72,10 +72,10 @@ Project-level scripts live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
      pointer to `./analysis/extraction-plan.md`; do NOT proceed to
      extraction.
 3. `BULK_EXTRACT=<0|1> bash .claude/skills/dfir-bootstrap/case-init.sh "$CASE_ID"`
-   — case-init now (a) creates the analysis/_extracted/ directory, (b)
+   — case-init now (a) creates the working/ directory, (b)
    walks ./evidence/, (c) sha256-hashes every file, (d) **when `BULK_EXTRACT=1`**,
    for any zip / tar / tar.gz / 7z bundle, expands it under
-   `./analysis/_extracted/<basename>/` and hashes every extracted member,
+   `./working/<basename>/` and hashes every extracted member,
    and (e) seeds `./analysis/manifest.md` with one row per top-level item
    AND one row per bundle member. When `BULK_EXTRACT=0` (the default in
    sequential mode), case-init scaffolds and hashes but skips bundle
@@ -94,7 +94,7 @@ Project-level scripts live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
    on this invocation, and subsequent stages are surfaced + verified by the
    orchestrator after each `extraction-cleanup.sh`):
    - For each `bundle:*` row, confirm
-     `find ./analysis/_extracted/<basename>/ -type f | wc -l` matches the
+     `find ./working/<basename>/ -type f | wc -l` matches the
      count of `bundle-member` rows whose `parent` field is the bundle's
      `evidence_id`. If counts differ, fix manifest.md (do NOT modify the
      bundle on disk) and record an `audit.sh` line `manifest-mismatch`.

@@ -26,7 +26,7 @@ It does nine things:
 3. **Case-init** — creates the full `./analysis/`, `./exports/`, `./reports/`
    scaffold AND walks `./evidence/` **depth-unbounded**, sha256-hashes every
    file, expands any zip / tar / tar.gz / 7z bundle to
-   `./analysis/_extracted/<basename>/`, hashes every extracted member, and
+   `./working/<basename>/`, hashes every extracted member, and
    seeds `./analysis/manifest.md` with `bundle:*` and `bundle-member` rows so
    analytic units (the contents inside a bundle) are tracked individually
    rather than only at the bundle level. **Locks `./evidence/` read-only at
@@ -42,14 +42,14 @@ It does nine things:
    case-init, **`manifest-check.sh`** verifies the ledger against the on-disk
    evidence + extraction trees and refuses to PASS when (a) any file under
    `evidence/` lacks a manifest row, (b) any archive's `bundle-member` count
-   does not match `find analysis/_extracted/<basename>/ -type f | wc -l`,
+   does not match `find working/<basename>/ -type f | wc -l`,
    (c) any row carries `sha256 = -` without an `operator-acknowledged`
    lead in `leads.md`, or (d) a bespoke hash file lives outside the
    canonical ledger (the case12 `analysis/archive_hashes.txt` workaround
    pattern). The `/case` slash-command runs `manifest-check.sh` as a
    pre-dispatch gate; the PreToolUse hook also calls
    `manifest-check.sh --quiet` before allowing reads against `./evidence/`
-   or `./analysis/_extracted/`.
+   or `./working/`.
 4. **Intake interview** — `intake-check.sh` returns nonzero if any
    chain-of-custody field in `reports/00_intake.md` is blank;
    `intake-interview.sh` prompts the operator (TTY) or accepts
@@ -136,10 +136,10 @@ finish a skill's workflow without having appended a single finding to
 ### 0. Case workspace
 
 This project keeps a master `cases/` directory at the project root. Every
-case lives under `./cases/<CASE_ID>/`, with its own `evidence/`, `analysis/`,
-`exports/`, `reports/` subtree. Before running any of the steps below,
-create that workspace and `cd` into it (every `./...` path in this skill is
-relative to the case workspace):
+case lives under `./cases/<CASE_ID>/`, with its own `evidence/`, `working/`,
+`analysis/`, `exports/`, `reports/` subtree. Before running any of the steps
+below, create that workspace and `cd` into it (every `./...` path in this
+skill is relative to the case workspace):
 
 ```bash
 mkdir -p "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>/evidence"
@@ -304,7 +304,7 @@ every Bash/Write/Edit when `./analysis/` exists.
 | Dir | Role | Integrity model |
 |---|---|---|
 | `./evidence/` | Original artifacts. | Hashed at intake by case-init (`./analysis/manifest.md` rows). Read-only via permissions deny. |
-| `./analysis/_extracted/<bundle>/` | Bundle members from a zip/tar/7z in `./evidence/`. | Hashed at intake by case-init (`./analysis/manifest.md` rows with `bundle-member` type). |
+| `./working/<bundle>/` | Bundle members from a zip/tar/7z in `./evidence/`. | Hashed at intake by case-init (`./analysis/manifest.md` rows with `bundle-member` type). |
 | `./analysis/<domain>/*.csv\|json\|txt\|md` | Tool reports / summaries (capinfos, conv-ip, dns.csv, conn.log, eve.json, findings.md, correlation.md). | NOT hashed. Recomputable from original evidence by re-running the tool. |
 | `./exports/**` | Extracted analytic units (carved files, reassembled HTTP objects, tcpflow streams, per-stream pcaps, bulk_extractor output, photorec recoveries, vol windows.dumpfiles output). | Hashed at write by `audit-exports.sh` (`./analysis/exports-manifest.md` rows). Mutations flagged. |
 
@@ -400,7 +400,7 @@ grep -iE "usbstor|disk&ven" ./analysis/windows-artifacts/hives/SYSTEM.strings.tx
 | Audit-log integrity report (post-hoc) | `./analysis/audit-integrity.md` |
 | Audit-verify sidecar (last-scanned offset) | `./analysis/.audit.lastsize` |
 | Evidence manifest (incl. bundle members) | `./analysis/manifest.md` |
-| Bundle-expanded evidence | `./analysis/_extracted/<basename>/...` |
+| Bundle-expanded evidence | `./working/<basename>/...` |
 | Exports manifest (sha256 of extracted artifacts) | `./analysis/exports-manifest.md` |
 | Exports-sweep sidecar (last-scan mtime) | `./analysis/.exports.lastscan` |
 | Per-domain findings | `./analysis/<domain>/findings.md` |

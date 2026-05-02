@@ -18,7 +18,7 @@ distinct mutability and integrity contract:
 | # | Layer | Path | Origin | Mutability | Integrity ledger | Hook |
 |---|-------|------|--------|------------|------------------|------|
 | 1 | Original evidence | `./evidence/` | Operator drop at intake | Read-only after intake | `analysis/manifest.md` | Permission deny + `chmod a-w` |
-| 2 | Bundle expansion | `./analysis/_extracted/<bundle>/` | `case-init.sh` expanding archives | Read-only by convention | `analysis/manifest.md` (`bundle-member` rows) | None — manifest-locked |
+| 2 | Bundle expansion | `./working/<bundle>/` | `case-init.sh` expanding archives | Read-only by convention | `analysis/manifest.md` (`bundle-member` rows) | None — manifest-locked |
 | 3 | Tool reports | `./analysis/<domain>/` | Surveyor + investigator | Mutable (recomputable) | None — by design | audit-log hooks only |
 | 4 | Derived artifacts | `./exports/<domain>/...` | Carved bytes, exported hives, dumped memory, sliced pcaps | Write-once | `analysis/exports-manifest.md` | `audit-exports.sh` |
 | 5 | Reports | `./reports/` | Final deliverables | Mutable | None | None |
@@ -50,9 +50,9 @@ ai-forensicator/                  # project root (cloned repo)
 ```
 
 **Operating model.** All forensic activity runs with the **case workspace as
-CWD** (`./cases/<CASE_ID>/`). Every `./evidence/`, `./analysis/`, `./exports/`,
-`./reports/` reference in this file, the agents, and the skills is relative to
-that workspace. Project-level scripts are at
+CWD** (`./cases/<CASE_ID>/`). Every `./evidence/`, `./working/`, `./analysis/`,
+`./exports/`, `./reports/` reference in this file, the agents, and the skills
+is relative to that workspace. Project-level scripts are at
 `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
 
 ---

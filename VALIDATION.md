@@ -83,13 +83,13 @@ mismatch is a chain-of-custody break — stop the validation, flag the
 case as compromised, do not proceed.
 
 For bundle members (e.g., a zip expanded under
-`analysis/_extracted/`), the manifest carries one `bundle-member` row
+`working/`), the manifest carries one `bundle-member` row
 per file. Spot-check at least 5 random members:
 
 ```bash
 shuf -n 5 <(grep -E '^\| EV[0-9]+-M[0-9]+ ' analysis/manifest.md) \
     | awk -F'|' '{print $7, $4}'
-# Re-hash each named file under analysis/_extracted/
+# Re-hash each named file under working/
 ```
 
 ### A2. Audit-log integrity

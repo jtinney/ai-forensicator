@@ -99,7 +99,7 @@ following table is your re-dispatch authority:
 - Initiate a brand-new investigation hypothesis. New hypotheses still
   flow through the correlator → Phase 3 path; you do not author
   `L-CORR-*` leads.
-- Modify files under `./evidence/` or `./analysis/_extracted/`.
+- Modify files under `./evidence/` or `./working/`.
 - Modify or delete prior `forensic_audit.log` entries — append-only via
   `audit.sh`.
 - Silently change a headline conclusion. If your reconciliation forces
@@ -312,7 +312,7 @@ separation the rest of the pipeline already uses.
      column is consistent with the file output. A `.E01` reported as
      `pcap`, a `.pcap` reported as `disk`, etc., is a Phase 1 error.
    - For every bundle row, confirm the bundle-member count in
-     `./analysis/_extracted/<basename>/` matches the rows in the
+     `./working/<basename>/` matches the rows in the
      manifest (the surveyor relies on this).
    - For every mismatch, queue a Phase 1 re-dispatch row in
      `./analysis/.qa-redispatch-pending` rather than hand-editing

@@ -147,7 +147,7 @@ Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
    When the case ran in sequential extraction mode (see
    `./analysis/extraction-plan.md` `Mode: sequential`), the bytes for
    each previously-staged archive have been cleaned out of
-   `./analysis/_extracted/`. If a correlation surfaces a question whose
+   `./working/`. If a correlation surfaces a question whose
    answer requires re-examining a file you no longer have on disk
    (member-hash mismatch, content review of a file that was not parsed
    on its first pass, byte-level comparison across two cleared bundles),
