@@ -19,6 +19,7 @@ Thumbs.db
 # DFIR working output (never commit evidence-derived artifacts)
 # - per-case derived directories under cases/<id>/
 cases/*/analysis/
+cases/*/working/
 cases/*/exports/
 cases/*/reports/
 cases/*/evidence/
@@ -52,3 +53,7 @@ examples/*.7z
 dist/
 build/
 *.log
+
+# Refactor / scratch
+.claude/worktrees/
+.refactor-baseline.txt
