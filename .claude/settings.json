@@ -1,4 +1,5 @@
 {
+  "autoMemoryEnabled": false,
   "permissions": {
     "allow": [
       "Bash(bash .claude/skills/dfir-bootstrap/preflight.sh:*)",
