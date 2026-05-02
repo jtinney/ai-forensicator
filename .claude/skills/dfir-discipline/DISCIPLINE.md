@@ -74,10 +74,8 @@ the PostToolUse drift detector and recorded as `INTEGRITY-VIOLATION` rows.**
 
 **Why:** `audit.sh` stamps the wall-clock UTC timestamp itself (`date -u
 +%Y-%m-%d %H:%M:%S UTC`). Direct writes let an agent assert any
-timestamp it likes — case7 contained 41 ISO-8601 `T...Z` synthetic
-timestamps that fell outside the case's wall-clock window. A chain-of-
-custody trail with author-asserted (vs. wall-clock) times will not
-survive cross-examination.
+timestamp it likes; a chain-of-custody trail with author-asserted (vs.
+wall-clock) times will not survive cross-examination.
 
 **How to apply:**
 - The first audit-log entry of every agent invocation MUST include
@@ -187,12 +185,13 @@ artifact-level (`yara -i <rule> -s`), and structural-level (`zeek-cut`,
 `jq` over `eve.json`) queries return a result that does NOT refute the
 hypothesis.**
 
-**Why:** Case7's L-EV01-yara-03-yara-e01 spent disassembly, 256-key XOR
-brute-force, and 200K-frame post-exploit scan to refute the hypothesis
-that a NOP-sled exploit produced a shell. The cheap disconfirmation —
-"did the victim ever initiate an outbound connection or open a new
-listener after the exploit timestamp?" — is a 30-second `tshark -Y`
-query and would have refuted the lead immediately.
+**Why:** Reverse engineering, disassembly, and >100K-frame scans cost
+hours; cheap wire-level (`tshark -Y`), artifact-level (`yara -i`), and
+structural-level (`zeek-cut`, `jq` over `eve.json`) queries cost
+seconds. When a cheap query refutes the hypothesis, the deep query is
+wasted; when the cheap query supports it, the deep query is justified.
+Burning cycles on deep queries before cheap ones inverts the cost
+gradient.
 
 **How to apply:**
 - The findings entry for the lead MUST start with the hypothesis as one
@@ -220,12 +219,11 @@ priority `high`. They may NOT be moved to "Remaining unknowns / out of
 scope." The test: if reversing the assumption flips a headline
 assertion in the report, it is in scope.**
 
-**Why:** Case7's correlator left the `dc19:c7f:2011:80::10:7777`
-anomaly under "out of scope" even though it directly contradicted the
-"address-agnostic spraying" characterization the report relies on.
-Same with the "Cluster B = scoreboard" alternative hypothesis: the
-report concluded "same team" without testing the strongest competing
-hypothesis, which would invert the central attribution claim.
+**Why:** An anomaly that, if resolved differently, flips a headline
+assertion is load-bearing for the case's conclusion. Filing it under
+"out of scope" silently makes the report rest on an untested
+assumption — the strongest competing hypothesis is exactly what
+attribution and scope claims must survive.
 
 **How to apply:**
 - Apply the test to every entry you're about to put under "out of
@@ -256,14 +254,13 @@ listing what same-domain follow-ups were considered. The correlator
 must reject any "gap" that reads like missed Phase-3 surface and
 escalate it back as a re-run lead, not absorb it as `L-CORR-*`.**
 
-**Why:** Case7's correlation pass surfaced six `L-CORR-*` leads, three
-of which (`L-CORR-02` per-stream Meterpreter outcome enumeration,
-`L-CORR-03` flag-harvester recovery, `L-CORR-06` parallel vs sequential
-delivery) were squarely investigator-domain Phase-3 questions. The
-investigators on the original leads answered the narrow hypothesis but
-did not enumerate the obvious adjacent surface; the correlator paid for
-that by triggering an additional Phase-3 investigation wave to fill the
-gap.
+**Why:** Adjacent same-domain follow-up questions are investigator
+work, not correlator work. When investigators close their narrow
+hypothesis without surveying the obvious next-question surface, the
+correlator absorbs Phase-3 work as `L-CORR-*` leads and triggers a
+remediation Phase-3 wave anyway. Naming the adjacent surface in the
+findings entry forces the investigator to either answer it or escalate
+it explicitly via `-eNN`, eliminating the round trip.
 
 **How to apply:**
 - Findings template gains a required field:
@@ -299,13 +296,13 @@ Matrix). Add an explicit "Since-last-correlation revalidation diff"
 subsection that lists each amended cell and the audit-log line that
 justifies it.**
 
-**Why:** Case7 audit log line 77 corrected Cluster C's exploit
-timestamp from `11:37:21.734` to `11:40:41`; the L-CORR-04 delta
-noted the correction in prose but did not back-port it into the
-"Unified Attack Timeline" table at line 54 of `correlation.md`. The
-final report uses the corrected `11:40:41`, but a reader who consults
-`correlation.md` without scrolling to the delta gets the wrong time.
-Headline tables are load-bearing; they cannot lag the audit trail.
+**Why:** Headline tables (Cluster table, Unified Timeline,
+Cross-Finding Matrix) are the canonical view a reader consults. A
+correction recorded only in delta-prose leaves the table inconsistent
+with the audit trail — readers who consult the table without scrolling
+to the delta read the wrong value. Headline tables cannot lag the
+audit trail; back-port every audit-log correction into the cell it
+amends.
 
 **How to apply:**
 - The diff is keyed off the prior `correlation.md`'s contents and the
@@ -341,13 +338,12 @@ justification in the row's `notes` column. `blocked` is acceptable only
 when `notes` documents a real external dependency. `in-progress` at case
 close is always a discipline failure (the investigator died mid-run).**
 
-**Why:** Case8 closed with four `escalated` parents whose children were
-all terminal — the parents' own hypotheses had been answered through the
-children, but the leads register kept claiming work was still in flight.
-A reader scanning leads.md cannot tell whether the case is actually done
-or whether some surface was abandoned. The QA pass caught this; the
-discipline rule is here so future correlators / reporters / QA agents
-catch it earlier.
+**Why:** A reader scanning `leads.md` must be able to tell whether the
+case is done or whether a surface was abandoned. Non-terminal leads
+left after their hypothesis is answered through a child or alternate
+path leave the queue ambiguous — the register claims work is in
+flight when it is not. Every lead transitions to a terminal status
+before close so the queue itself is the answer.
 
 **How to apply:**
 - The orchestrator runs `bash .claude/skills/dfir-bootstrap/leads-check.sh`
@@ -447,15 +443,12 @@ interview. If the harness has no TTY and the operator has not provided
 intake values via env vars, triage MUST surface this as a blocker —
 not silently proceed with blank fields.**
 
-**Why:** Case8 closed with every chain-of-custody field blank in
-`reports/00_intake.md` (Source, Acquired, Received, Evidence hash,
-Integrity verification, Reported incident, Analyst priorities). The
-underlying scaffolding accepted blank stubs as valid. Without intake,
-a future examiner has no idea who authored the case, what they were
-asked to find, or how the evidence was acquired — the report cannot
-support a chain of custody. **This is the one place agent autonomy
-yields to operator input.** The intake interview is exempt from the
-"NEVER ask questions" operator preference.
+**Why:** A future examiner needs to know who authored the case, what
+they were asked to find, and how the evidence was acquired. Without
+populated chain-of-custody fields the report cannot support a chain of
+custody — the case has no provenance to defend. **This is the one
+place agent autonomy yields to operator input.** The intake interview
+is exempt from the "NEVER ask questions" operator preference.
 
 **How to apply:**
 - `bash .claude/skills/dfir-bootstrap/intake-check.sh` is a gate at
@@ -750,18 +743,17 @@ itself emits a tree we don't control.
   does not mechanically reject collision-prone names — the QA pass
   greps `./exports/` for un-suffixed artifacts when `manifest.md`
   records ≥2 evidence items and Edit-fixes the offending paths.
-- **Manifest completeness (issue #12)** is gate-enforced by
-  `manifest-check.sh`. The script runs in three places: (1) the
-  `/case` slash-command after `case-init.sh`, refusing to dispatch
-  agents when the manifest is broken; (2) the PreToolUse Bash hook,
-  refusing reads against `./evidence/` or `./working/`
-  when the manifest is broken; (3) the QA phase, which surfaces any
-  remaining violations into `qa-review.md`. Bespoke hash files
-  outside the canonical ledger (`analysis/archive_hashes.txt` and
-  similar — case12's workaround pattern) trigger an
-  `L-MANIFEST-BESPOKE-NN` BLOCKED lead requiring operator review;
-  the file may carry forensic work that needs migration into
-  `manifest.md`, not deletion.
+- **Manifest completeness** is gate-enforced by `manifest-check.sh`.
+  The script runs in three places: (1) the `/case` slash-command after
+  `case-init.sh`, refusing to dispatch agents when the manifest is
+  broken; (2) the PreToolUse Bash hook, refusing reads against
+  `./evidence/` or `./working/` when the manifest is broken; (3) the
+  QA phase, which surfaces remaining violations into `qa-review.md`.
+  Bespoke hash files outside the canonical ledger
+  (`analysis/archive_hashes.txt` and similar) trigger an
+  `L-MANIFEST-BESPOKE-NN` BLOCKED lead requiring operator review; the
+  file holds forensic work that needs migration into `manifest.md`,
+  not deletion.
 - When in doubt about whether a borderline item is in scope (G) or
   whether the surface is exhausted (H), prefer the more conservative
   (in-scope / not-exhausted) choice. The cost of an extra lead is one

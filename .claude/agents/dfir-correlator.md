@@ -70,7 +70,7 @@ You do not need to know your iteration number — the diff keys off the prior `c
 
 The orchestrator dispatches a Phase 3 wave for any open `L-CORR-*` leads, then re-invokes you. The correlation loop exits when every `L-CORR-*` is terminal AND your output (the sha256 of `correlation.md`) matches the previous iteration. The convergence guard is the orchestrator's responsibility — you do not self-cap.</step>
 
-<step n="10">`L-EXTRACT-RE-<NN>` re-extraction leads (sequential mode only). When the case ran in sequential extraction mode (`./analysis/extraction-plan.md` `Mode: sequential`), the bytes for each previously-staged archive have been cleaned out of `./working/`. When a correlation surfaces a question whose answer requires re-examining a file no longer on disk (member-hash mismatch, content review of a file that was not parsed on its first pass, byte-level comparison across two cleared bundles), append an `L-EXTRACT-RE-<NN>` lead. Row format:
+<step n="10">`L-EXTRACT-RE-<NN>` re-extraction leads (sequential mode only). In sequential extraction mode (`./analysis/extraction-plan.md` `Mode: sequential`), each staged archive's bytes are cleaned out of `./working/` after its Phase 3 wave settles. When correlation surfaces a question whose answer requires re-examining a file absent from `./working/` (member-hash mismatch, content review of a file not parsed on its first pass, byte-level comparison across two cleaned bundles), append an `L-EXTRACT-RE-<NN>` lead. Row format:
 
 | field | value |
 |---|---|

@@ -29,27 +29,19 @@ runs **six phases**: triage → survey → investigate → correlate → report 
 QA. The QA phase has authority to correct numerical / labeling /
 lead-status errors in place before sign-off.
 
-**Manifest gate (issue #12).** After case-init.sh has run (whether by
-Phase 1 / dfir-triage on a new case or by a prior invocation on a
-resume), run:
+**Manifest gate.** After `case-init.sh` runs (whether on a new case or
+on resume), run:
 
 ```bash
 bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/manifest-check.sh"
 ```
 
-If the check exits non-zero, **refuse to dispatch any agent**. The script
-appends a `BLOCKED` lead to `./analysis/leads.md` for each violation it
-can autopolicy (bespoke hash files); other violations are surfaced on
-stderr with a `[kind] path` summary and a one-line `fix:` line per row.
-Surface the violations to the user verbatim, do NOT proceed with
-triage / survey / investigate / correlate / report / QA, and stop.
-
-The gate exists because case12 (12 archives at `evidence/Archives/*.zip`,
-depth-2) hit the pre-#12 `case-init.sh:314` `find -maxdepth 1` walk and
-silently produced an empty `manifest.md`. Agents then improvised
-`analysis/archive_hashes.txt` outside the canonical ledger. With the
-depth-walk fixed and `manifest-check.sh` as a deterministic gate, an
-incomplete manifest stops the pipeline before any agent reads evidence.
+A non-zero exit refuses dispatch. The script appends a `BLOCKED` lead to
+`./analysis/leads.md` for autopolicy violations (bespoke hash files);
+other violations stream to stderr with a `[kind] path` summary and a
+one-line `fix:` line per row. Surface the violations verbatim and stop —
+do NOT proceed with triage / survey / investigate / correlate / report /
+QA on a broken manifest.
 
 **Start by checking whether this is a new case or a resume:**
 

@@ -42,7 +42,7 @@ Canonical `DOMAIN` names match the subdirs `case-init.sh` creates. Use them verb
 ```bash
 bash $CLAUDE_PROJECT_DIR/.claude/skills/dfir-bootstrap/survey-hash-on-read.sh <DOMAIN> <FILE_PATH>
 ```
-On non-zero exit, STOP and report the mismatch. Never silently re-hash. Applies to every file you `cat`, `head`, `Read`, parse with a domain tool, or feed to a parser. Does NOT apply to files Plaso/Volatility/Zeek read transitively from inside their wrappers (the rule fires once per survey-touch on files you explicitly open). The script writes `./analysis/<DOMAIN>/files-examined.tsv` (path / sha256 / size / mtime / examined-at), idempotent on (path, sha) match, and refuses with exit 2 + audit-log MISMATCH row when a previously-recorded file's sha changes.</step>
+On non-zero exit, STOP and report the mismatch. Never silently re-hash. Applies to every file you `cat`, `head`, `Read`, parse with a domain tool, or feed to a parser. Does NOT apply to files Plaso/Volatility/Zeek read transitively from inside their wrappers (the rule fires once per survey-touch on files you explicitly open). The script writes `./analysis/<DOMAIN>/files-examined.tsv` (path / sha256 / size / mtime / examined-at), idempotent on (path, sha) match, and refuses with exit 2 + audit-log MISMATCH row when a recorded file's sha changes between examinations.</step>
 
 <step n="5">Domain-specific tool constraints:
 - **PCAP work**: <rule ref="DISCIPLINE §P-pcap"/> — Zeek-only for PCAP parsing in this phase. If a question demands a non-Zeek PCAP tool, mark the lead BLOCKED per <rule ref="DISCIPLINE §P-tools"/>.

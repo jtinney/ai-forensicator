@@ -11,7 +11,7 @@ Project guidance for Claude Code working in this repository.
 | Evidence Mode | Strict read-only (chain of custody) |
 
 See `ARCHITECTURE.md` for the project tree and the canonical location of
-every restated concept.
+every shared concept.
 
 <reference-style>
   - `@.claude/skills/<name>/SKILL.md` — skill-loading hint in prose, agent

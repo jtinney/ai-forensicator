@@ -115,8 +115,9 @@ without errors before any analysis proceeds.
 - You cannot formally verify the E01 against its embedded acquisition hash.
 - Document this limitation in `./reports/00_intake.md` and proceed with analysis
   using TSK's direct libewf support (see §2 below).
-- Install via `sudo apt install libewf-tools` (requires GIFT PPA — added by
-  `install-tools.sh`) if courtroom-quality integrity verification is required.
+- Install via `sudo apt install libewf-tools` (requires GIFT PPA;
+  `install-tools.sh` configures the PPA) for courtroom-quality integrity
+  verification.
   Do NOT `sudo apt install ewf-tools` — that's the stock Ubuntu package and
   apt will remove it again the next time `libewf` gets touched.
 

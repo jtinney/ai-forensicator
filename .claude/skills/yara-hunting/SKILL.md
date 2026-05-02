@@ -280,11 +280,10 @@ condition:
 
 ## Rule enumeration gate (run BEFORE any scan)
 
-Before any `yara` invocation in this case, you MUST enumerate the rule
-library and record what is actually available. The case7 anti-pattern was
-that the surveyor reused an in-memory mental model of the rule set and
-never recorded what it scanned with — so the case's audit trail cannot
-prove which rules fired and which did not.
+Before any `yara` invocation, enumerate the rule library and record what
+is available. An in-memory mental model of the rule set leaves the audit
+trail unable to prove which rules fired and which did not — record the
+enumeration on disk so a future examiner can reconstruct the scan.
 
 ```bash
 mkdir -p ./analysis/yara

@@ -88,7 +88,7 @@ Network forensics on SIFT is built around four toolchains:
 
 1. **Wireshark CLI suite** (`tshark`, `capinfos`, `mergecap`, `editcap`,
    `dumpcap`) — display-filter-driven analysis of single captures.
-2. **Zeek** (formerly Bro) — protocol-aware analyser that turns a pcap into
+2. **Zeek** — protocol-aware analyser that turns a pcap into
    structured TSV logs (`conn.log`, `dns.log`, `http.log`, `ssl.log`,
    `files.log`, `x509.log`, `notice.log`, `weird.log`). The structured output
    is what most pivots key off.

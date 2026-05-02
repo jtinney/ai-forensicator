@@ -503,7 +503,7 @@ optional: analysis/memory/survey-EV01.md
 
 ## Notes
 
-- `windows.malware.psxview.PsXView` is the canonical cross-source enumerator; `pslist` and `psscan` are kept for raw column detail (offsets, exit times) but are no longer the primary "is this hidden?" answer.
+- `windows.malware.psxview.PsXView` is the canonical "is this hidden?" cross-source enumerator. `pslist` and `psscan` provide raw column detail (offsets, exit times); use them for column lookup, not for hidden-process detection.
 - `windows.malfind` produces false positives (JIT-compiled code, .NET CLR) — triage hits manually before dumping.
 - `windows.netscan` may show connections from before image capture time — correlate with disk timeline.
 - `windows.svcscan` surfaces services configured but not yet loaded, and deleted services still in memory.

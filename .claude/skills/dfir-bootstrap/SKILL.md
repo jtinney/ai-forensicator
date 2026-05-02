@@ -3,7 +3,7 @@
 ## Use this skill when
 - A case is about to start (any case, any host)
 - A new SIFT instance / fresh shell needs an inventory before evidence is touched
-- A previously bootstrapped case needs `audit.sh` / fallback parser plumbing
+- An already-bootstrapped case needs `audit.sh` / fallback parser plumbing
 - Any other skill reports missing tools and you need to know *what* is missing
   and *what* substitutes are available
 
@@ -13,94 +13,90 @@ directly if the case prompt names one (e.g., "memory image" → memory-analysis,
 "USB exfil" → windows-artifacts).
 
 ## Overview
-Use this skill **at the start of every case**, before invoking any other DFIR skill.
-It does nine things:
+Use this skill at the start of every case, before invoking any other DFIR
+skill. It does nine things:
 
-1. **Preflight** — inventories the SIFT instance's actually-available tools/libraries
-   so the rest of the workflow doesn't burn calls discovering gaps mid-analysis. Now
-   also verifies the Suricata ET Open ruleset is present and populated (post-case7
-   hardening: a Suricata install without rules silently runs an empty IDS pass).
-2. **Installer remediation** — `install-tools.sh` checks what is missing and installs
-   only missing components when run without `--check`. `suricata-update` is now a
-   hard fail rather than warn-and-continue if the ET Open sync fails.
-3. **Case-init** — creates the full `./analysis/`, `./exports/`, `./reports/`
-   scaffold AND walks `./evidence/` **depth-unbounded**, sha256-hashes every
-   file, expands any zip / tar / tar.gz / 7z bundle to
-   `./working/<basename>/`, hashes every extracted member, and
-   seeds `./analysis/manifest.md` with `bundle:*` and `bundle-member` rows so
-   analytic units (the contents inside a bundle) are tracked individually
-   rather than only at the bundle level. **Locks `./evidence/` read-only at
-   the filesystem level** (`chmod -R a-w` on every file plus `chmod a-w` on
-   the dir itself) so a stray `>` redirect, `mv`, or `tee` cannot mutate
-   evidence even if the harness hook is bypassed. **Halt-on-failure
-   contract (issue #12):** an empty `evidence/` dir, a disk-pressure
+1. **Preflight** — inventories the SIFT instance's available tools and
+   libraries so the workflow does not burn calls discovering gaps
+   mid-analysis. Verifies the Suricata ET Open ruleset is present and
+   populated (a Suricata install without rules silently runs an empty
+   IDS pass).
+2. **Installer remediation** — `install-tools.sh` reports gaps with
+   `--check` and installs missing components without it.
+   `suricata-update` is a hard fail when the ET Open sync errors.
+3. **Case-init** — provisions the five-folder workspace
+   (`./evidence/ ./working/ ./analysis/ ./exports/ ./reports/`),
+   walks `./evidence/` depth-unbounded, sha256-hashes every file,
+   expands zip / tar / tar.gz / 7z bundles into `./working/<basename>/`,
+   hashes every member, and seeds `./analysis/manifest.md` with
+   `bundle:*` and `bundle-member` rows so each analytic unit is tracked
+   individually. Locks `./evidence/` read-only (`chmod -R a-w` on every
+   file plus `chmod a-w` on the dir) so a stray `>` redirect, `mv`, or
+   `tee` cannot mutate evidence if the harness hook is bypassed.
+   Halt-on-failure contract: an empty `evidence/`, a disk-pressure
    condition, an extraction error, or a poisoned partial-expansion all
-   exit nonzero with a `BLOCKED` lead row written to `analysis/leads.md`
+   exit nonzero with a BLOCKED lead row written to `analysis/leads.md`
    (`L-EVIDENCE-EMPTY-NN`, `L-EXTRACT-DISK-NN`, `L-EXTRACT-FAIL-NN`,
-   `L-EXTRACT-POISON-NN`). The case12 silent-skip class of bugs (12
-   archives at depth-2 silently producing an empty manifest) is gone. After
-   case-init, **`manifest-check.sh`** verifies the ledger against the on-disk
-   evidence + extraction trees and refuses to PASS when (a) any file under
-   `evidence/` lacks a manifest row, (b) any archive's `bundle-member` count
-   does not match `find working/<basename>/ -type f | wc -l`,
-   (c) any row carries `sha256 = -` without an `operator-acknowledged`
-   lead in `leads.md`, or (d) a bespoke hash file lives outside the
-   canonical ledger (the case12 `analysis/archive_hashes.txt` workaround
-   pattern). The `/case` slash-command runs `manifest-check.sh` as a
-   pre-dispatch gate; the PreToolUse hook also calls
-   `manifest-check.sh --quiet` before allowing reads against `./evidence/`
-   or `./working/`.
+   `L-EXTRACT-POISON-NN`). After case-init, `manifest-check.sh` verifies
+   the ledger against the on-disk evidence and `./working/` trees and
+   refuses to PASS when (a) any file under `evidence/` lacks a manifest
+   row, (b) any archive's `bundle-member` count does not match
+   `find working/<basename>/ -type f | wc -l`, (c) any row carries
+   `sha256 = -` without an `operator-acknowledged` lead in `leads.md`,
+   or (d) a bespoke hash file lives outside the canonical ledger. The
+   `/case` slash-command runs `manifest-check.sh` as a pre-dispatch
+   gate; the PreToolUse hook calls `manifest-check.sh --quiet` before
+   allowing reads against `./evidence/` or `./working/`.
 4. **Intake interview** — `intake-check.sh` returns nonzero if any
    chain-of-custody field in `reports/00_intake.md` is blank;
    `intake-interview.sh` prompts the operator (TTY) or accepts
-   `INTAKE_*` env vars (non-TTY) to fill the gaps. The interview is
-   **not optional** and Phases 4 / 5 / 6 refuse to run without it.
-5. **Audit-log enforcement** — `audit.sh` is the only sanctioned writer of
-   `./analysis/forensic_audit.log`. The PreToolUse hook in
-   `.claude/settings.json` denies direct `>>` / `tee -a` / `sed -i` writes to
-   the log; the PostToolUse hook (`audit-verify.sh`) detects synthetic
+   `INTAKE_*` env vars (non-TTY) to fill the gaps. Phases 4 / 5 / 6
+   refuse to run without it.
+5. **Audit-log enforcement** — `audit.sh` is the only sanctioned writer
+   of `./analysis/forensic_audit.log`. The PreToolUse hook in
+   `.claude/settings.json` denies direct `>>` / `tee -a` / `sed -i`
+   writes; the PostToolUse hook (`audit-verify.sh`) detects synthetic
    timestamps written via Python or other bypass paths and appends an
-   `INTEGRITY-VIOLATION` row. `audit.sh` itself rejects vague action names,
-   empty result/next-step fields, and rapid-duplicate rows (5-second window).
-   The Stop hook (`audit-stop.sh`) only logs a session boundary when the
-   prior session actually produced work — no more 50% stop_hook spam.
-   `audit-retrofit.sh` is an offline checker for pre-existing audit logs.
-6. **Per-domain baseline-artifact contracts** — each domain SKILL.md declares
-   a `<!-- baseline-artifacts -->` block listing the structured artifacts the
-   surveyor must produce. `baseline-check.sh <DOMAIN>` parses the block and
-   tests each path; the orchestrator and correlator both invoke it to surface
-   `L-BASELINE-<DOMAIN>-<NN>` leads when a baseline is missing, and that lead
-   runs FIRST in the next investigator wave (post-case7 hardening: case7
-   skipped Zeek + Suricata baselines despite preflight reporting them GREEN).
-7. **Lead terminal-status invariant** — `leads-check.sh` returns nonzero if
-   any lead is non-terminal at case close (escalated parents whose children
-   are terminal must transition; in-progress rows are stale; high/med open
-   rows must be worked or downgraded with documented justification). The
-   orchestrator runs it as a gate before Phases 4 / 5 / 6.
-8. **Stdlib fallback parsers** — Python scripts in `parsers/` that substitute
-   for missing EZ Tools / regipy / python-evtx when those are absent. They
-   cover the artifact types most cases actually pivot on (Recycle Bin,
-   Prefetch, registry hive strings).
-9. **Offline MITRE ATT&CK reference + validator** — `reference/mitre-attack.tsv`
-   carries a curated subset of the enterprise matrix (id / tactic / name);
-   `mitre-validate.sh <findings.md>` greps the file for `MITRE:` lines, parses
-   T-numbers, and exits nonzero on any malformed shape or unknown ID.
-   `dfir-qa` runs it against every `analysis/<domain>/findings.md` (DISCIPLINE
-   rule K). The TSV is offline-only and analyst-extensible — append rows
-   when a real technique is missing rather than reaching for a vague parent.
+   `INTEGRITY-VIOLATION` row. `audit.sh` rejects vague action names,
+   empty result/next-step fields, and rapid-duplicate rows (5-second
+   window). The Stop hook (`audit-stop.sh`) logs a session boundary
+   only when the prior session produced work. `audit-retrofit.sh` is
+   an offline checker for pre-existing audit logs.
+6. **Per-domain baseline-artifact contracts** — each domain SKILL.md
+   declares a `<!-- baseline-artifacts -->` block listing the
+   structured artifacts the surveyor produces. `baseline-check.sh
+   <DOMAIN>` parses the block and tests each path; the orchestrator and
+   correlator invoke it to surface `L-BASELINE-<DOMAIN>-<NN>` leads when
+   a baseline is missing, and that lead runs FIRST in the next
+   investigator wave.
+7. **Lead terminal-status invariant** — `leads-check.sh` returns
+   nonzero if any lead is non-terminal at case close (escalated parents
+   whose children are terminal transition; in-progress rows are stale;
+   high/med open rows are worked or downgraded with documented
+   justification). The orchestrator runs it as a gate before Phases
+   4 / 5 / 6.
+8. **Stdlib fallback parsers** — Python scripts in `parsers/` that
+   substitute for missing EZ Tools / regipy / python-evtx. They cover
+   the artifact types cases pivot on (Recycle Bin, Prefetch, registry
+   hive strings).
+9. **Offline MITRE ATT&CK reference + validator** —
+   `reference/mitre-attack.tsv` carries a curated subset of the
+   enterprise matrix (id / tactic / name); `mitre-validate.sh
+   <findings.md>` parses `MITRE:` lines and exits nonzero on malformed
+   shape or unknown IDs. `dfir-qa` runs it against every
+   `analysis/<domain>/findings.md` (DISCIPLINE rule K). The TSV is
+   offline-only and analyst-extensible — append rows when a real
+   technique is missing rather than reaching for a vague parent.
 
 Shared discipline rules that bind every phase agent live in
-`.claude/skills/dfir-discipline/DISCIPLINE.md`. Each agent's prompt loads them
-at the top.
+`.claude/skills/dfir-discipline/DISCIPLINE.md`. Each agent's prompt
+loads them at the top.
 
-**Why this exists:** the global `~/.claude/CLAUDE.md` advertises tools that are not
-guaranteed to be installed on every SIFT instance. The 2020JimmyWilson case (2026-04-18)
-wasted multiple cycles discovering that `ewf-tools`, `pip`, `python-registry`, `regipy`,
-`python-evtx`, and the entire `/opt/zimmermantools/` directory were absent. Run preflight
-first — then you know up front what the real toolbox is and which skills need their
-fallback path. Case7 (2026-04-25) added items 4 and 5: agents synthesized
-forensic_audit.log timestamps and skipped Zeek/Suricata baselines despite
-their availability — both now have hook-and-contract enforcement.
+**Why this exists:** the global `~/.claude/CLAUDE.md` advertises tools
+that are not guaranteed to be installed on every SIFT instance.
+Preflight reveals what is actually installed before any skill
+references it; the audit-log and baseline-artifact gates ensure
+chain-of-custody and per-domain coverage hold across phases.
 
 ---
 
@@ -311,8 +307,8 @@ every Bash/Write/Edit when `./analysis/` exists.
 Conclusions chained on top of `./exports/` content (e.g. "this carved
 binary is malware family X") are grounded in bytes whose sha256 is in
 `exports-manifest.md`. A future examiner can verify identity. Mutations
-to a previously-hashed export (sha256 changes) produce a `MUTATED` row —
-investigate.
+to a recorded export (sha256 differs from its `first-seen` row) produce
+a `MUTATED` row — investigate.
 
 To inspect what's been tracked:
 
@@ -427,8 +423,9 @@ grep -iE "usbstor|disk&ven" ./analysis/windows-artifacts/hives/SYSTEM.strings.tx
 
 ## Notes
 
-- **Run preflight on every new SIFT instance** — do not cache results across hosts.
-  The 2020JimmyWilson case was on a SIFT instance missing almost every advertised tool.
+- **Run preflight on every new SIFT instance** — do not cache results
+  across hosts. SIFT instances vary in which advertised tools are
+  actually installed; per-host inventory is the only reliable signal.
 - The bootstrap skill does not replace the other skills — it precedes them. Always
   hand off to `sleuthkit`, `windows-artifacts`, etc. for the actual analysis.
 - If the user has asked for autonomous operation, preflight still runs; just log the

@@ -48,7 +48,7 @@ Every case at `./cases/<CASE_ID>/` has five top-level folders. Each layer has a 
 </case-workspace>
 
 <concept-locations>
-Where each restated concept is canonically defined.
+Where each shared concept is canonically defined.
 
 | concept                       | canonical file                                           |
 |-------------------------------|----------------------------------------------------------|
