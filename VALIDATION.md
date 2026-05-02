@@ -475,7 +475,7 @@ complete pass through this validation protocol. Use it to calibrate
 cd ./cases/case10
 
 # A1 — the manifest has one EV01 row for the disk image. Re-hash it.
-sha256sum evidence/2020JimmyWilson.E01
+sha256sum evidence/2020SampleCase.E01
 
 # A2 — run the offline audit checker.
 bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/audit-retrofit.sh" \

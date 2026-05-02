@@ -19,7 +19,7 @@ UTC_NOW="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
 
 if [[ "$CASE_ID" == "UNSET" ]]; then
     echo "usage: case-init.sh <CASE_ID>" >&2
-    echo "       CASE_ID is any free-form case identifier (e.g. 2020JimmyWilson, INC-2026-042)" >&2
+    echo "       CASE_ID is any free-form case identifier (e.g. 2020SampleCase, INC-2026-042)" >&2
     exit 2
 fi
 

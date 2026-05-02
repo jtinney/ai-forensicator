@@ -13,7 +13,7 @@ derived report.
 
 | Layer | Origin | Source URL |
 |-------|--------|-----------|
-| Disk image (`evidence/2020JimmyWilson.E01`) | NIST CFREDS — Forensic Image Test Image (DFIR_AB) | <https://cfreds.nist.gov/all/DFIR_AB/ForensicsImageTestimage> |
+| Disk image (`evidence/2020SampleCase.E01`) | NIST CFREDS — Forensic Image Test Image (DFIR_AB) | <https://cfreds.nist.gov/all/DFIR_AB/ForensicsImageTestimage> |
 | Analysis, findings, correlation, reports | Output of this project's six-phase orchestrator running against the NIST image | this repository (`.claude/agents/`, `.claude/skills/`) |
 
 NIST CFREDS data is published by the U.S. National Institute of
@@ -29,7 +29,7 @@ copy can sit here without bloating commits.
 ```bash
 gh release download sample-data-v1 \
     --repo jtinney/ai-forensicator \
-    --pattern 'CFREDS-JimmyWilson.zip' \
+    --pattern 'CFREDS-Sample.zip' \
     --dir ./examples/
 ```
 
@@ -37,7 +37,7 @@ If you only want the original NIST disk image (no project analysis),
 download it directly from CFREDS:
 
 ```bash
-curl -L -o /tmp/2020JimmyWilson.E01 \
+curl -L -o /tmp/2020SampleCase.E01 \
     "https://cfreds.nist.gov/all/DFIR_AB/ForensicsImageTestimage"
 ```
 
@@ -46,7 +46,7 @@ curl -L -o /tmp/2020JimmyWilson.E01 \
 ```
 case10/
 ├── evidence/
-│   └── 2020JimmyWilson.E01           # NIST CFREDS disk image (309 MB)
+│   └── 2020SampleCase.E01            # NIST CFREDS disk image (309 MB)
 ├── analysis/
 │   ├── forensic_audit.log            # full chain-of-custody trail
 │   ├── manifest.md                   # evidence sha256 + bundle members
@@ -77,8 +77,8 @@ toolset.)
 ```bash
 # 1. Download and unpack into the project's cases/ directory.
 gh release download sample-data-v1 --repo jtinney/ai-forensicator \
-    --pattern 'CFREDS-JimmyWilson.zip' --dir ./examples/
-unzip ./examples/CFREDS-JimmyWilson.zip -d ./cases/
+    --pattern 'CFREDS-Sample.zip' --dir ./examples/
+unzip ./examples/CFREDS-Sample.zip -d ./cases/
 
 # 2. Read the headline outputs first.
 less ./cases/case10/reports/stakeholder-summary.md   # business-decision briefing

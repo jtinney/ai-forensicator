@@ -2,7 +2,7 @@
 
 This directory is the starting point for a new case. To use it:
 
-1. **Pick a case ID.** Free-form (e.g. `INC-2026-042`, `2020JimmyWilson`).
+1. **Pick a case ID.** Free-form (e.g. `INC-2026-042`, `2020SampleCase`).
 2. **Clone or rename this directory** to match:
    ```bash
    cp -r cases/case-xxxx cases/<CASE_ID>

@@ -141,7 +141,7 @@ ai-forensicator/                  # cloned project root
 │       ├── analysis/             #     tool output + findings
 │       ├── exports/              #     extracted artifacts
 │       └── reports/              #     final.md, stakeholder-summary.md, qa-review.md
-└── examples/                     # worked example case (NIST CFREDS Jimmy Wilson, see examples/README.md)
+└── examples/                     # worked example case (NIST CFREDS DFIR_AB sample, see examples/README.md)
 ```
 
 - `CLAUDE.md` — operator contract: case-start protocol, forensic
