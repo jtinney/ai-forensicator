@@ -37,15 +37,28 @@ if [[ -z "$DOMAIN" ]]; then
     exit 2
 fi
 
-# Map DOMAIN to the skill-file path
+# Resolve project root (where .claude/ lives). Prefer CLAUDE_PROJECT_DIR
+# when set by the harness; otherwise walk up from CWD looking for .claude/.
+# Falls back to "." so the legacy CWD-IS-PROJECT-ROOT behaviour still works.
+if [[ -n "${CLAUDE_PROJECT_DIR:-}" && -d "${CLAUDE_PROJECT_DIR}/.claude" ]]; then
+    PROJECT_ROOT="$CLAUDE_PROJECT_DIR"
+else
+    PROJECT_ROOT="$(pwd)"
+    while [[ "$PROJECT_ROOT" != "/" && ! -d "$PROJECT_ROOT/.claude" ]]; do
+        PROJECT_ROOT="$(dirname "$PROJECT_ROOT")"
+    done
+    [[ -d "${PROJECT_ROOT}/.claude" ]] || PROJECT_ROOT="."
+fi
+
+# Map DOMAIN to the skill-file path (project-root-anchored)
 case "$DOMAIN" in
-    filesystem)        SKILL_FILE=".claude/skills/sleuthkit/SKILL.md"           ;;
-    timeline)          SKILL_FILE=".claude/skills/plaso-timeline/SKILL.md"      ;;
-    windows-artifacts) SKILL_FILE=".claude/skills/windows-artifacts/SKILL.md"   ;;
-    memory)            SKILL_FILE=".claude/skills/memory-analysis/SKILL.md"     ;;
-    network)           SKILL_FILE=".claude/skills/network-forensics/SKILL.md"   ;;
-    yara)              SKILL_FILE=".claude/skills/yara-hunting/SKILL.md"        ;;
-    sigma)             SKILL_FILE=".claude/skills/sigma-hunting/SKILL.md"       ;;
+    filesystem)        SKILL_FILE="${PROJECT_ROOT}/.claude/skills/sleuthkit/SKILL.md"           ;;
+    timeline)          SKILL_FILE="${PROJECT_ROOT}/.claude/skills/plaso-timeline/SKILL.md"      ;;
+    windows-artifacts) SKILL_FILE="${PROJECT_ROOT}/.claude/skills/windows-artifacts/SKILL.md"   ;;
+    memory)            SKILL_FILE="${PROJECT_ROOT}/.claude/skills/memory-analysis/SKILL.md"     ;;
+    network)           SKILL_FILE="${PROJECT_ROOT}/.claude/skills/network-forensics/SKILL.md"   ;;
+    yara)              SKILL_FILE="${PROJECT_ROOT}/.claude/skills/yara-hunting/SKILL.md"        ;;
+    sigma)             SKILL_FILE="${PROJECT_ROOT}/.claude/skills/sigma-hunting/SKILL.md"       ;;
     *)
         printf '{"domain":"%s","error":"unknown domain"}\n' "$DOMAIN"
         exit 2

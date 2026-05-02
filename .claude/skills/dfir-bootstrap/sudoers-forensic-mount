@@ -1,0 +1,136 @@
+# /etc/sudoers.d/forensic-mount  (mode 0440, owned root:root)
+#
+# Passwordless sudo for read-only disk-image mounting only — installed by
+# the forensic analyst so the DFIR pipeline (qemu-nbd / mount / ewfmount /
+# block-device hashing) can run autonomously without exposing the rest of
+# root.
+#
+# Install:
+#   sudo install -m 0440 -o root -g root \
+#        /home/sift/.claude/sudoers-forensic-mount \
+#        /etc/sudoers.d/forensic-mount
+#   sudo visudo -c                # verify syntax before logging out
+#
+# Binary paths verified against this system on 2026-05-02:
+#   mount     → /usr/bin/mount       (setuid root)
+#   umount    → /usr/bin/umount      (setuid root)
+#   qemu-nbd  → /usr/bin/qemu-nbd
+#   modprobe  → /usr/sbin/modprobe   (symlink to /bin/kmod)
+#   losetup   → /usr/sbin/losetup
+#   partprobe → /usr/sbin/partprobe
+#   ewfmount  → /usr/bin/ewfmount
+#   sha256sum → /usr/bin/sha256sum
+#   nbd-client → /usr/sbin/nbd-client (only if installed)
+#
+# Sudoers wildcards: fnmatch without FNM_PATHNAME — `*` matches anything
+# including `/` and spaces. Argument paths are matched LITERALLY (sudoers
+# does not canonicalise them), so both absolute and relative forms must be
+# enumerated where the script uses cwd-relative paths.
+
+# ---- NBD kernel module ----
+Cmnd_Alias DFIR_MOUNT_NBD_MOD = \
+    /usr/sbin/modprobe nbd, \
+    /usr/sbin/modprobe nbd *, \
+    /usr/sbin/modprobe -r nbd
+
+# ---- qemu-nbd attach / detach ----
+# Attach: source file must be inside a project tree under
+# /home/sift/Desktop/*. Detach: only /dev/nbd* targets.
+Cmnd_Alias DFIR_MOUNT_NBD = \
+    /usr/bin/qemu-nbd --read-only --cache=none --format=* --connect=/dev/nbd* /home/sift/Desktop/*, \
+    /usr/bin/qemu-nbd --read-only --connect=/dev/nbd* /home/sift/Desktop/*, \
+    /usr/bin/qemu-nbd -r --connect=/dev/nbd* /home/sift/Desktop/*, \
+    /usr/bin/qemu-nbd --disconnect /dev/nbd*, \
+    /usr/bin/qemu-nbd -d /dev/nbd*
+
+# ---- nbd-client (probe whether a /dev/nbdN node is already in use) ----
+Cmnd_Alias DFIR_MOUNT_NBD_CLIENT = \
+    /usr/sbin/nbd-client -c /dev/nbd*, \
+    /usr/sbin/nbd-client -check /dev/nbd*
+
+# ---- losetup (raw disk images) ----
+# Attach: source file must be inside a project tree. Detach: only loop devices.
+Cmnd_Alias DFIR_MOUNT_LOOP = \
+    /usr/sbin/losetup --read-only --find --show /home/sift/Desktop/*, \
+    /usr/sbin/losetup -r -f --show /home/sift/Desktop/*, \
+    /usr/sbin/losetup --read-only -P --find --show /home/sift/Desktop/*, \
+    /usr/sbin/losetup -r -P -f --show /home/sift/Desktop/*, \
+    /usr/sbin/losetup --detach /dev/loop*, \
+    /usr/sbin/losetup -d /dev/loop*, \
+    /usr/sbin/losetup --list, \
+    /usr/sbin/losetup -l
+
+# ---- mount (read-only only; /dev/nbd*p* or /dev/loop*p* sources) ----
+# Destinations are enumerated for both absolute and cwd-relative forms,
+# since diskimage-mount.sh uses ./working/mounts/<EV>/p<M>.
+Cmnd_Alias DFIR_MOUNT_FS = \
+    /usr/bin/mount -o ro /dev/nbd*p* /home/sift/Desktop/*/working/mounts/*, \
+    /usr/bin/mount -o ro /dev/nbd*p* /home/sift/Desktop/*/cases/*/working/mounts/*, \
+    /usr/bin/mount -o ro /dev/nbd*p* ./working/mounts/*, \
+    /usr/bin/mount -o ro /dev/nbd*p* working/mounts/*, \
+    /usr/bin/mount -o ro /dev/nbd*p* ./cases/*/working/mounts/*, \
+    /usr/bin/mount -o ro /dev/nbd*p* cases/*/working/mounts/*, \
+    /usr/bin/mount -o ro\,* /dev/nbd*p* /home/sift/Desktop/*/working/mounts/*, \
+    /usr/bin/mount -o ro\,* /dev/nbd*p* /home/sift/Desktop/*/cases/*/working/mounts/*, \
+    /usr/bin/mount -o ro\,* /dev/nbd*p* ./working/mounts/*, \
+    /usr/bin/mount -o ro\,* /dev/nbd*p* working/mounts/*, \
+    /usr/bin/mount -o ro\,* /dev/nbd*p* ./cases/*/working/mounts/*, \
+    /usr/bin/mount -o ro\,* /dev/nbd*p* cases/*/working/mounts/*, \
+    /usr/bin/mount -t * -o ro /dev/nbd*p* /home/sift/Desktop/*/working/mounts/*, \
+    /usr/bin/mount -t * -o ro\,* /dev/nbd*p* /home/sift/Desktop/*/working/mounts/*, \
+    /usr/bin/mount -t * -o ro /dev/nbd*p* ./working/mounts/*, \
+    /usr/bin/mount -t * -o ro\,* /dev/nbd*p* ./working/mounts/*, \
+    /usr/bin/mount -o ro /dev/loop*p* /home/sift/Desktop/*/working/mounts/*, \
+    /usr/bin/mount -o ro /dev/loop*p* ./working/mounts/*, \
+    /usr/bin/mount -o ro\,* /dev/loop*p* /home/sift/Desktop/*/working/mounts/*, \
+    /usr/bin/mount -o ro\,* /dev/loop*p* ./working/mounts/*
+
+# ---- umount (only mountpoints under working/mounts/) ----
+Cmnd_Alias DFIR_UMOUNT = \
+    /usr/bin/umount /home/sift/Desktop/*/working/mounts/*, \
+    /usr/bin/umount /home/sift/Desktop/*/cases/*/working/mounts/*, \
+    /usr/bin/umount ./working/mounts/*, \
+    /usr/bin/umount working/mounts/*, \
+    /usr/bin/umount ./cases/*/working/mounts/*, \
+    /usr/bin/umount cases/*/working/mounts/*
+
+# ---- ewfmount (E01 FUSE layer) ----
+Cmnd_Alias DFIR_MOUNT_EWF = \
+    /usr/bin/ewfmount /home/sift/Desktop/*/evidence/* /home/sift/Desktop/*/working/mounts/*, \
+    /usr/bin/ewfmount /home/sift/Desktop/*/cases/*/evidence/* /home/sift/Desktop/*/cases/*/working/mounts/*, \
+    /usr/bin/ewfmount ./evidence/* ./working/mounts/*, \
+    /usr/bin/ewfmount ./cases/*/evidence/* ./cases/*/working/mounts/*
+
+# ---- partprobe (force kernel partition rescan on nbd / loop) ----
+Cmnd_Alias DFIR_MOUNT_PROBE = \
+    /usr/sbin/partprobe /dev/nbd*, \
+    /usr/sbin/partprobe /dev/loop*
+
+# ---- sha256sum on raw block devices (chain-of-custody hash of /dev/nbdN) ----
+# Restricted to /dev/nbd* and /dev/loop* — cannot be used to read arbitrary
+# files as root.
+Cmnd_Alias DFIR_MOUNT_HASH = \
+    /usr/bin/sha256sum /dev/nbd*, \
+    /usr/bin/sha256sum /dev/loop*, \
+    /usr/bin/sha1sum /dev/nbd*, \
+    /usr/bin/sha1sum /dev/loop*, \
+    /usr/bin/md5sum /dev/nbd*, \
+    /usr/bin/md5sum /dev/loop*
+
+# ---- aggregate ----
+Cmnd_Alias DFIR_MOUNT = \
+    DFIR_MOUNT_NBD_MOD, \
+    DFIR_MOUNT_NBD, \
+    DFIR_MOUNT_NBD_CLIENT, \
+    DFIR_MOUNT_LOOP, \
+    DFIR_MOUNT_FS, \
+    DFIR_UMOUNT, \
+    DFIR_MOUNT_EWF, \
+    DFIR_MOUNT_PROBE, \
+    DFIR_MOUNT_HASH
+
+# Defaults — keep auditing on for these (so /var/log/auth.log captures
+# every image mount and unmount even though no password was needed).
+Defaults!DFIR_MOUNT log_input, log_output, !lecture, !pwfeedback
+
+sift ALL=(root) NOPASSWD: DFIR_MOUNT

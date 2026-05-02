@@ -204,6 +204,12 @@ SIGMA_EVTX_LINK="/usr/local/bin/evtx_dump"
 SIGMA_EVTX_ASSET="x86_64-unknown-linux-musl"
 SIGMA_EVTX_APT="evtx-tools"
 
+# Rule repositories — cloned to /opt; consumed by yara-hunting and sigma-hunting skills.
+YARA_RULES_REPO="Neo23x0/signature-base"
+YARA_RULES_DIR="/opt/yara-rules"
+SIGMA_RULES_REPO="SigmaHQ/sigma"
+SIGMA_RULES_DIR="/opt/sigma-rules"
+
 # ─── colour helpers ──────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -552,6 +558,8 @@ run_check_mode() {
     check_path_present "${ZEEK_PREFIX}/bin/zeek" "Zeek (OBS install prefix)"
     check_path_present "${SIGMA_CHAINSAW_DIR}" "Chainsaw install dir"
     check_path_present "${SIGMA_HAYABUSA_DIR}" "Hayabusa install dir"
+    check_path_present "${YARA_RULES_DIR}" "YARA rule repo"
+    check_path_present "${SIGMA_RULES_DIR}" "Sigma rule repo"
 
     header "Check summary"
     _log "Full log: $LOGFILE"
@@ -1195,6 +1203,73 @@ install_sigma_tools() {
     install_evtx_dump
 }
 
+install_sudoers_mount() {
+    # Install /etc/sudoers.d/forensic-mount so qemu-nbd, mount -o ro,
+    # ewfmount, partprobe, losetup -r, sha256sum on /dev/nbd*|loop*,
+    # umount working/mounts/*, and modprobe nbd run without a password
+    # prompt (required for autonomous /case orchestration).
+    #
+    # Idempotent: skipped when /etc/sudoers.d/forensic-mount already
+    # matches the bundled file byte-for-byte.
+    header "passwordless sudo for read-only disk-image mounting"
+
+    local src="${SCRIPT_DIR}/sudoers-forensic-mount"
+    local dst="/etc/sudoers.d/forensic-mount"
+
+    if [[ ! -f "$src" ]]; then
+        fail "sudoers source missing: $src"
+        return 1
+    fi
+
+    # Validate syntax BEFORE touching /etc/sudoers.d/
+    if ! visudo -cf "$src" >> "$LOGFILE" 2>&1; then
+        fail "sudoers source failed visudo -cf — refusing to install"
+        return 1
+    fi
+
+    if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+        ok "sudoers ruleset already installed at $dst (byte-identical)"
+        return 0
+    fi
+
+    if "${SUDO[@]}" install -m 0440 -o root -g root "$src" "$dst" >> "$LOGFILE" 2>&1; then
+        ok "installed sudoers ruleset to $dst (mode 0440 root:root)"
+    else
+        fail "install sudoers ruleset to $dst failed — see $LOGFILE"
+        return 1
+    fi
+
+    # Final integrity check across all of /etc/sudoers.d/
+    if "${SUDO[@]}" visudo -c >> "$LOGFILE" 2>&1; then
+        ok "system sudoers integrity check passed (visudo -c)"
+    else
+        fail "system sudoers integrity check FAILED — REVIEW $LOGFILE BEFORE NEXT LOGOUT"
+        return 1
+    fi
+}
+
+install_rule_repos() {
+    header "YARA rule repo (Neo23x0/signature-base → ${YARA_RULES_DIR})"
+    if [[ -d "${YARA_RULES_DIR}/.git" ]]; then
+        ok "YARA rules already cloned at ${YARA_RULES_DIR}"
+    else
+        "${SUDO[@]}" git clone --depth=1 \
+            "https://github.com/${YARA_RULES_REPO}.git" "$YARA_RULES_DIR" >> "$LOGFILE" 2>&1 \
+            && ok "YARA rules cloned to ${YARA_RULES_DIR}" \
+            || fail "git clone ${YARA_RULES_REPO} failed — check network and ${LOGFILE}"
+    fi
+
+    header "Sigma rule repo (SigmaHQ/sigma → ${SIGMA_RULES_DIR})"
+    if [[ -d "${SIGMA_RULES_DIR}/.git" ]]; then
+        ok "Sigma rules already cloned at ${SIGMA_RULES_DIR}"
+    else
+        "${SUDO[@]}" git clone --depth=1 \
+            "https://github.com/${SIGMA_RULES_REPO}.git" "$SIGMA_RULES_DIR" >> "$LOGFILE" 2>&1 \
+            && ok "Sigma rules cloned to ${SIGMA_RULES_DIR}" \
+            || fail "git clone ${SIGMA_RULES_REPO} failed — check network and ${LOGFILE}"
+    fi
+}
+
 print_install_summary() {
     header "Install summary"
     _log "Full log: $LOGFILE"
@@ -1236,6 +1311,7 @@ main() {
     # already installed by SIFT, and the whole apt install line aborts.
     ensure_gift_ppa || warn "GIFT PPA not added; some packages may install older versions"
     install_apt_base
+    install_sudoers_mount
     install_dotnet
     install_plaso
     install_ez_tools
@@ -1244,6 +1320,7 @@ main() {
     install_python_libs
     install_network_tools
     install_sigma_tools
+    install_rule_repos
     print_install_summary
 
     [[ $ERRORS -eq 0 ]]

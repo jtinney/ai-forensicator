@@ -41,6 +41,22 @@ fi
 # Nothing to inspect — allow
 [[ -z "$cmd" ]] && exit 0
 
+# ---- helper: append a denied-attempt row to forensic_audit.log ----
+# Writes ONLY when ./analysis/ exists (i.e., we're in a case workspace).
+# Uses the canonical audit.sh writer so chain-of-custody integrity is
+# preserved (wall-clock UTC timestamp, dedup, validation). The action
+# is truncated to 200 chars to keep the log readable.
+audit_deny() {
+    local action_full="$1" result="$2" next="$3"
+    local hook_dir audit_sh action_short
+    hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+    audit_sh="${hook_dir}/audit.sh"
+    [[ -d ./analysis && -x "$audit_sh" ]] || return 0
+    action_short="$(printf '%s' "$action_full" | tr '\n' ' ' | head -c 200)"
+    [[ "${#action_full}" -gt 200 ]] && action_short="${action_short}…[TRUNCATED]"
+    bash "$audit_sh" "$action_short" "$result" "$next" >/dev/null 2>&1 || true
+}
+
 # ---- allow path: any invocation of the audit framework scripts themselves ----
 # (audit.sh is the canonical writer; the others are read-only or write
 # integrity-violation rows via audit.sh, so they cannot forge timestamps.)
@@ -80,7 +96,139 @@ or use \`audit-retrofit.sh\` for offline integrity checking.
 
 See: .claude/skills/dfir-discipline/DISCIPLINE.md rule A
 EOF
+    audit_deny "$cmd" "DENIED: direct write to forensic_audit.log (must use audit.sh)" "use audit.sh; see DISCIPLINE rule A"
     exit 2
+fi
+
+# ---- deny path: destructive workarounds (find -delete, xargs rm, etc.) ----
+# Catches forms that bypass the rm -rf deny rule. Sequential-mode cleanup
+# of ./working/<basename>/ is allowed; anything else is denied.
+DESTRUCTIVE_RE='(\bfind\b[^|;&]*-delete\b)|(\bfind\b[^|;&]*-exec(dir)?\b[^|;&]*\b(rm|unlink)\b)|(\bxargs\b[^|;&]*\brm\b)|(\bshred\b)|(\btruncate\b[^|;&]*-s[[:space:]]*0\b)'
+
+if printf '%s' "$cmd" | grep -qE "$DESTRUCTIVE_RE"; then
+    SACRED_RE='(^|[[:space:]/=])((\.?\/)?evidence(/|$|[[:space:]])|forensic_audit\.log|/etc/|/usr/|/var/)'
+    WORKING_RE='(^|[[:space:]/=])\.?\/?working\/[^/[:space:]]+/'
+
+    deny_reason=""
+    if printf '%s' "$cmd" | grep -qE "$SACRED_RE"; then
+        deny_reason="touches a sacred path (evidence/, audit log, system root)"
+    elif ! printf '%s' "$cmd" | grep -qE "$WORKING_RE"; then
+        deny_reason="not scoped to ./working/<basename>/"
+    fi
+
+    if [[ -n "$deny_reason" ]]; then
+        cat >&2 <<EOF
+PreToolUse DENY: destructive command — $deny_reason.
+
+Detected: $cmd
+
+Why: \`find -delete\`, \`find -exec rm\`, \`xargs rm\`, \`shred\`, and
+\`truncate -s 0\` bypass the \`rm -rf\` deny rule. They are allowed
+ONLY when scoped to a single sequential-mode stage under
+./working/<basename>/, and never against evidence, audit log, or
+system paths.
+
+Allowed forms (sequential analysis cleanup):
+  rm -rf ./working/<basename>/
+  find ./working/<basename>/ -delete
+  find ./working/<basename>/ -name '*.tmp' -delete
+  find ./working/<basename>/ -print0 | xargs -0 rm
+  bash .claude/skills/dfir-bootstrap/extraction-cleanup.sh <basename>
+
+See: .claude/skills/dfir-discipline/DISCIPLINE.md
+EOF
+        audit_deny "$cmd" "DENIED: destructive workaround (find -delete / xargs rm / shred / truncate); ${deny_reason}" "use extraction-cleanup.sh or scope to ./working/<basename>/"
+        exit 2
+    fi
+fi
+
+# ---- sudo coverage check ----
+# Verify the proposed sudo invocation is in /etc/sudoers.d/ (NOPASSWD).
+# This catches three failure modes early instead of letting sudo prompt
+# for a password (which hangs autonomous mode):
+#   1. The forensic-mount sudoers ruleset isn't installed yet.
+#   2. The agent constructed a sudo command not covered by the ruleset
+#      (e.g., new flag combination, wrong path, escaped arg).
+#   3. The agent is trying to do something operator-only (apt install,
+#      suricata-update, systemctl) that should never run autonomously.
+#
+# We strip leading `sudo` and any sudo flags, then ask sudo itself
+# whether the inner command would run NOPASSWD. Empty inner-command
+# (`sudo -l`, `sudo -v`) is allowed through.
+if printf '%s' "$cmd" | grep -qE '^[[:space:]]*sudo([[:space:]]|$)'; then
+    inner_cmd="$(printf '%s' "$cmd" | python3 -c '
+import sys, shlex
+try:
+    parts = shlex.split(sys.stdin.read())
+except Exception:
+    sys.exit(0)
+if not parts or parts[0] != "sudo":
+    sys.exit(0)
+# Informational forms: sudo does not execute the inner command, so the
+# coverage check would be a false positive. Exit empty to skip it.
+#   short: -l, -v, -V, -k, -K (also combined forms like -nl, -lE)
+#   long:  --list, --validate, --version, --help, --reset-timestamp, --remove-timestamp
+INFO_SHORT = set("lvVkK")
+INFO_LONG = {"--list","--validate","--version","--help","--reset-timestamp","--remove-timestamp"}
+for p in parts[1:]:
+    if not p.startswith("-"):
+        break
+    if p in INFO_LONG:
+        sys.exit(0)
+    if p.startswith("--"):
+        continue
+    if set(p[1:]) & INFO_SHORT:
+        sys.exit(0)
+i = 1
+SKIP_WITH_ARG = {"-u","-g","-p","-r","-t","-T","-U","-h","-A","-D","-R","-C"}
+while i < len(parts):
+    a = parts[i]
+    if a == "--":
+        i += 1
+        break
+    if not a.startswith("-"):
+        break
+    if a in SKIP_WITH_ARG:
+        i += 2
+        continue
+    i += 1
+print(" ".join(shlex.quote(p) for p in parts[i:]))
+' 2>/dev/null)"
+
+    if [[ -n "$inner_cmd" ]]; then
+        if ! eval "sudo -n -l -- $inner_cmd" >/dev/null 2>&1; then
+            cat >&2 <<EOF
+PreToolUse DENY: sudo invocation not covered by passwordless sudoers.
+
+Detected: $cmd
+Inner:    $inner_cmd
+
+Either it requires a password (which would hang autonomous mode), or
+it is not in /etc/sudoers.d/forensic-mount. The DFIR pipeline only
+authorises read-only disk-image mounting via passwordless sudo:
+
+  modprobe nbd, qemu-nbd --read-only, mount -o ro on /dev/nbd*p*
+  to working/mounts/<EV>/p<M>, ewfmount, partprobe /dev/nbd*|loop*,
+  losetup -r, umount on working/mounts/*, sha256sum on /dev/nbd*|loop*.
+
+To install the ruleset (operator action, requires password ONCE):
+  sudo bash \${CLAUDE_PROJECT_DIR:-.}/.claude/skills/dfir-bootstrap/install-tools.sh
+
+Or just the sudoers piece:
+  sudo install -m 0440 -o root -g root \\
+       \${CLAUDE_PROJECT_DIR:-.}/.claude/skills/dfir-bootstrap/sudoers-forensic-mount \\
+       /etc/sudoers.d/forensic-mount
+  sudo visudo -c
+
+If this is operator-only (apt install, suricata-update, systemctl, …),
+run it directly in your shell — do not invoke from the agent.
+
+See: .claude/skills/dfir-discipline/DISCIPLINE.md
+EOF
+            audit_deny "$cmd" "DENIED: sudo invocation not covered by /etc/sudoers.d/forensic-mount" "install ruleset via install-tools.sh; see DISCIPLINE rule A"
+            exit 2
+        fi
+    fi
 fi
 
 # ---- manifest gate (issue #12) ----
@@ -140,6 +288,7 @@ Resolution paths:
 
 See: GitHub issue #12 (case-init determinism + manifest-check gate)
 EOF
+            audit_deny "$cmd" "DENIED: manifest integrity check failed (manifest-check.sh non-zero)" "fix manifest via case-init.sh; see issue #12"
             exit 2
         fi
         # rc 0 (PASS) or rc 2 (preconditions wrong, e.g. fresh case
