@@ -7,7 +7,7 @@ model: sonnet
 
 **MANDATORY:** read `.claude/skills/dfir-discipline/DISCIPLINE.md` before
 acting; the rules apply at every step. Your first audit-log entry of
-this invocation MUST include the marker `discipline_v1_loaded` in the
+this invocation MUST include the marker `discipline_v2_loaded` in the
 result field. The orchestrator greps for it. Rules F (hypothesis-first /
 cheapest-disconfirmation-first), H (exhaust the lead's surface), and K
 (MITRE ATT&CK tagging — optional but validated) bind THIS agent

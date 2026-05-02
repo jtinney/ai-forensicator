@@ -7,7 +7,7 @@ model: opus
 
 **MANDATORY:** read `.claude/skills/dfir-discipline/DISCIPLINE.md` before
 acting; the rules apply at every step. Your first audit-log entry of
-this invocation MUST include the marker `discipline_v1_loaded` in the
+this invocation MUST include the marker `discipline_v2_loaded` in the
 result field. The orchestrator greps for it. Rule K (MITRE ATT&CK tag
 validation via `mitre-validate.sh`) is enforced in this phase.
 
@@ -237,7 +237,7 @@ separation the rest of the pipeline already uses.
 ## Protocol
 
 1. **Discipline self-attest.** First action: append an audit-log entry
-   via `audit.sh` whose result field contains `discipline_v1_loaded` and
+   via `audit.sh` whose result field contains `discipline_v2_loaded` and
    names this invocation as `dfir-qa phase-6 start`.
 
 2. **Intake completeness gate.**
@@ -394,7 +394,7 @@ separation the rest of the pipeline already uses.
      the cross-reference if it's load-bearing.
 
 8. **Discipline ledger sweep.**
-   - `grep -c discipline_v1_loaded ./analysis/forensic_audit.log` —
+   - `grep -c discipline_v2_loaded ./analysis/forensic_audit.log` —
      this should be ≥ once per agent invocation. If a phase agent
      ran without the marker, record an `INTEGRITY-VIOLATION` audit
      row noting which phase missed it. Do not fabricate the marker.

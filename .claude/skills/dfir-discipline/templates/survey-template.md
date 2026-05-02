@@ -42,7 +42,7 @@
 - **Evidence ID:** `<EV_ID>`           <!-- e.g. EV01 -->
 - **Evidence sha256:** `<sha256>`      <!-- copy from analysis/manifest.md -->
 - **Domain:** `<domain>`               <!-- one of: filesystem, timeline, windows-artifacts, memory, network, yara, sigma -->
-- **Surveyor agent version:** `dfir-surveyor / discipline_v1_loaded`
+- **Surveyor agent version:** `dfir-surveyor / discipline_v2_loaded`
 - **UTC timestamp:** `<YYYY-MM-DD HH:MM:SS UTC>`
 
 ## Tools run

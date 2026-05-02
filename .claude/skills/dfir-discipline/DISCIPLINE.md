@@ -2,14 +2,62 @@
 
 These rules apply at every step of every phase agent (`dfir-triage`,
 `dfir-surveyor`, `dfir-investigator`, `dfir-correlator`, `dfir-reporter`,
-`dfir-qa`). Each rule is bound to one or more specific failure modes
-observed in production cases. The rule statement is normative; the
-**Why** and **How to apply** lines are the operating context an agent
-uses to handle edge cases.
+`dfir-qa`). The rule statement is normative; the **Why** and
+**How to apply** lines are operating context for edge cases.
 
-A future audit of the case will grep for `discipline_v1_loaded` to confirm
-each agent invocation acknowledged these rules — your first audit-log
-entry of every invocation MUST include that marker in the `result` field.
+<audit-log-format>
+  Each row of `./analysis/forensic_audit.log`:
+
+    <UTC timestamp> | <action> | <result> | <next step>
+
+  - Pipe-delimited, four columns, single line per row.
+  - Wall-clock UTC stamped by `audit.sh` (format: `YYYY-MM-DD HH:MM:SS UTC`).
+  - Pipes inside any field are escaped as `\|`.
+  - Append-only via `bash .claude/skills/dfir-bootstrap/audit.sh`.
+    Direct `>>` / `tee -a` / `sed -i` / `cp` / `mv` / `python open()`
+    are denied at the harness level.
+
+  Examples:
+
+    2026-05-02 14:12:33 UTC | dfir-triage start | discipline_v2_loaded; 4 evidence items EV01..EV04 | dispatch surveyors per ORCHESTRATE Phase 2
+    2026-05-02 14:18:07 UTC | fls -r -o 65664 EV01.E01 | 11553 entries; NTFS at offset 65664 | feed mactime; pivot logon timestamps in survey-EV01.md
+</audit-log-format>
+
+<marker-self-attestation>
+  Every agent invocation emits the literal marker `discipline_v2_loaded` in
+  the `result` field of its first audit row. The orchestrator and dfir-qa
+  grep for it. A missing marker is a self-attestation failure recorded by
+  dfir-qa as `INTEGRITY-VIOLATION: missing discipline marker`.
+
+  The version suffix (`v2`, `v3`, …) bumps when rule semantics change so
+  pre- and post-change agent runs are distinguishable in the audit log.
+  This file is the single definition of the active version; no other file
+  restates it.
+</marker-self-attestation>
+
+<index>
+  Where each canonical concept is defined.
+
+  | concept                       | section          |
+  |-------------------------------|------------------|
+  | audit-log row format          | audit-log-format |
+  | marker self-attestation       | marker-self-attestation |
+  | audit.sh write monopoly       | Rule A.1         |
+  | layer model                   | Rule A — Layer model |
+  | exports-manifest integrity    | Rule A.2         |
+  | hypothesis-first              | Rule F           |
+  | scope-closure                 | Rule G           |
+  | exhaust the lead's surface    | Rule H           |
+  | headline / table revalidation | Rule B           |
+  | lead terminal-status invariant| Rule I           |
+  | MITRE ATT&CK tagging          | Rule K           |
+  | intake completeness           | Rule J           |
+  | multi-evidence path encoding  | Rule L           |
+  | PCAP analysis                 | Rule P-pcap      |
+  | disk-image format             | Rule P-diskimage |
+  | new-tool prohibition          | Rule P-tools     |
+  | YARA rules location           | Rule P-yara      |
+</index>
 
 ---
 
@@ -33,7 +81,7 @@ survive cross-examination.
 
 **How to apply:**
 - The first audit-log entry of every agent invocation MUST include
-  `discipline_v1_loaded` somewhere in the `result` field. The orchestrator
+  `discipline_v2_loaded` somewhere in the `result` field. The orchestrator
   will grep for this marker.
 - Never `echo "<UTC>" >> ./analysis/forensic_audit.log` or
   `tee -a ./analysis/forensic_audit.log`. The PreToolUse hook denies
@@ -503,11 +551,187 @@ itself emits a tree we don't control.
 
 ---
 
+<rule id="P-pcap" binds="dfir-surveyor,dfir-investigator">
+  <name>PCAP analysis is Zeek-only</name>
+  <statement>
+    Every PCAP / pcapng / cap evidence item is processed with Zeek.
+    Inventorying the capture (capinfos, file-magic detection, packet
+    count) is permitted as a pre-Zeek triage step. No other PCAP
+    analysis tool is invoked.
+  </statement>
+  <why>
+    Zeek's connection logs and protocol parsers are the canonical
+    surface for network forensics in this project. Parallel tools
+    against the same wire data produce duplicate findings and
+    correlation-time conflicts when classifications disagree.
+    Single-tool processing eliminates that conflict class.
+  </why>
+  <how>
+    - Surveyor invokes Zeek against each PCAP and writes outputs under
+      `./analysis/network/zeek/`.
+    - Inventory step: `capinfos -A <pcap> > ./analysis/network/<EVID>-capinfos.txt`.
+    - Tools that MUST NOT be invoked on PCAPs: tshark dissection,
+      Suricata, Wireshark, ngrep, tcpdump replay parsing, p0f, RITA,
+      Brim. Reading existing outputs from these tools (when present
+      in `./analysis/`) is permitted; generating new ones is not.
+    - When Zeek cannot answer a PCAP question, mark the lead BLOCKED
+      per Rule P-tools — do not reach for an alternate tool.
+  </how>
+</rule>
+
+<example for="P-pcap">
+  ```bash
+  # Inventory:
+  capinfos -A ./evidence/EV02.pcapng > ./analysis/network/EV02-capinfos.txt
+  bash audit.sh "capinfos -A EV02.pcapng" "<summary line>" "run zeek"
+
+  # Analysis:
+  cd ./analysis/network/zeek/
+  zeek -C -r ../../../evidence/EV02.pcapng
+  bash audit.sh "zeek -C -r EV02.pcapng" "<conn.log line count>" "survey: top talkers, DNS qnames"
+  ```
+</example>
+
+---
+
+<rule id="P-diskimage" binds="dfir-triage,dfir-surveyor">
+  <name>Non-E01 disk images are converted to E01 with hashes</name>
+  <statement>
+    Every disk-image evidence item that is not already E01 is converted
+    to E01 with sha256 hashing, in `./working/e01/`, before any analysis
+    tool reads it. The conversion event is audited; the source hash and
+    the post-conversion E01 hash are both recorded in `./analysis/manifest.md`.
+  </statement>
+  <why>
+    E01 is the project's canonical disk-image envelope. It carries
+    embedded chain-of-custody metadata, per-segment integrity hashes,
+    and uniform support across every disk-domain tool (TSK, ewfmount,
+    Velociraptor). Mixed formats (raw `.dd`, `.vmdk`, `.vhd`, `.vhdx`,
+    split `.001`, `.ad1`) force per-tool handling and create
+    format-specific bug surface.
+  </why>
+  <how>
+    - Conversion runs as part of triage's working-copy preparation.
+    - Source: `./evidence/<file>` (locked read-only by case-init).
+    - Destination: `./working/e01/<source-name>.E01`.
+    - Tooling: `ewfacquire` (libewf2). Compression: best. Hash: sha256.
+    - Manifest rows: one row for the source (`type=blob`), one row for
+      the converted E01 (`type=conversion-e01`, `parent=EV<NN>`,
+      `notes=ewfacquire compression=best hash=sha256`).
+    - When conversion fails (corrupt source, unsupported format,
+      `ewfacquire` missing), mark the originating lead BLOCKED per
+      Rule P-tools.
+    - E01 sources pass through unchanged.
+  </how>
+</rule>
+
+<example for="P-diskimage">
+  ```bash
+  # Convert .dd to E01:
+  ewfacquire \
+      -t ./working/e01/EV01 \
+      -c best -d sha256 -u -CCASEID -DDESC -EEXAM -eEVID -mremovable -Mlogical -nNOTES \
+      ./evidence/EV01.dd
+  # Resulting file: ./working/e01/EV01.E01
+  bash audit.sh "ewfacquire EV01.dd -> E01" "sha256-source=<src> sha256-e01=<dst>" "manifest append; surveyor reads from working/e01/EV01.E01"
+  ```
+</example>
+
+---
+
+<rule id="P-tools" binds="every agent">
+  <name>No new forensic programs or techniques</name>
+  <statement>
+    Agents do not introduce new forensic programs, libraries, or
+    analysis techniques into this project. The toolbox is the set of
+    binaries and libraries inventoried by `./analysis/preflight.md`
+    plus the parsers under `.claude/skills/dfir-bootstrap/parsers/`.
+    When an existing tool cannot answer a lead, the lead is set to
+    `status=blocked` in `./analysis/leads.md` with a one-sentence
+    suggested fix. dfir-qa aggregates BLOCKED leads in
+    `./reports/qa-review.md` so the operator can resolve them
+    out-of-band.
+  </statement>
+  <why>
+    Tool sprawl turns each case into a calibration exercise. The
+    current toolbox is calibrated, has documented fallback paths, and
+    is subject to integrity hooks. Introducing a new tool mid-case
+    bypasses those guarantees. BLOCKED leads with documented fixes
+    accumulate into a reviewable backlog (install a package, add a
+    parser, accept the gap) that the operator drives, not the agent.
+  </why>
+  <how>
+    - Row format: standard `leads.md` row with `status=blocked`. The
+      `notes` column carries:
+      `suggested-fix=<verb>; tool-needed=<binary or library or rule>`
+    - Allowed `suggested-fix` verbs: `install-package`, `add-parser`,
+      `add-rule`, `upgrade-library`, `accept-gap`.
+    - dfir-qa step "BLOCKED-leads aggregate" reads every blocked row
+      and emits a `## BLOCKED leads` section in `qa-review.md` grouped
+      by `suggested-fix` verb.
+  </how>
+</rule>
+
+<example for="P-tools">
+  ```
+  | L-EV02-network-04 | EV02 | network | Zeek did not classify the proprietary protocol on tcp/9876 | analysis/network/zeek/conn.log#L1247 | high | blocked | suggested-fix=add-parser; tool-needed=zeek-script-for-proto-9876 |
+  | L-EV01-disk-07 | EV01 | filesystem | TSK did not enumerate APFS snapshots | analysis/filesystem/findings.md#L88 | med | blocked | suggested-fix=install-package; tool-needed=apfs-fuse |
+  ```
+</example>
+
+---
+
+<rule id="P-yara" binds="dfir-surveyor,dfir-investigator">
+  <name>YARA rules live at /opt/yara-rules/</name>
+  <statement>
+    Every YARA rule used in this project lives under `/opt/yara-rules/`,
+    organized and consolidated. YARA scans read rules from
+    `/opt/yara-rules/` and write hits to `./exports/yara_hits/` per
+    Rule L (multi-evidence path encoding). Agents do not author YARA
+    rules elsewhere, do not cache them in case workspaces, and do not
+    pull them from arbitrary upstream sources mid-case.
+  </statement>
+  <why>
+    Rule sprawl is expensive. YARA rule loading dominates scan
+    wall-clock on large corpora; duplicate rule sets across cases
+    compound the cost and produce duplicate hits without resolution.
+    A consolidated, curated tree at `/opt/yara-rules/` is the single
+    source of truth, shared across cases, versioned by the operator
+    out-of-band.
+  </why>
+  <how>
+    - Read path: `/opt/yara-rules/` (subdirectories group rules by
+      tactic, family, or source; the operator owns the layout).
+    - Scan: `yara -r -s -p <jobs> /opt/yara-rules/<scope>/ <target>`.
+    - Hit output: `./exports/yara_hits/yara-<EVID>.txt` (Rule L
+      filename encoding) or
+      `./exports/yara_hits/<EVID>/<rule>/` for rule-grouped trees
+      (Rule L directory exception).
+    - When a needed rule is missing from `/opt/yara-rules/`, mark the
+      lead BLOCKED per Rule P-tools with `suggested-fix=add-rule` and
+      the rule's source identifier in `tool-needed`.
+    - When `/opt/yara-rules/` is absent on the host, preflight reports
+      `yara: RED`; the YARA-domain surveyor BLOCKS its lead with
+      `suggested-fix=install-package; tool-needed=/opt/yara-rules`.
+  </how>
+</rule>
+
+<example for="P-yara">
+  ```bash
+  # Disk image scan:
+  yara -r -s -p 4 /opt/yara-rules/malware/ ./working/e01/EV01.E01 \
+      > ./exports/yara_hits/yara-EV01.txt
+  bash audit.sh "yara -r /opt/yara-rules/malware EV01" "<hit count>" "review hits; pivot per matched rule"
+  ```
+</example>
+
+---
+
 ## Cross-rule notes
 
 - The DISCIPLINE.md path is referenced from each agent's frontmatter as
   `MANDATORY` — the agent harness does not enforce reading; the marker
-  `discipline_v1_loaded` is the self-attestation signal.
+  `discipline_v2_loaded` is the self-attestation signal.
 - The PreToolUse / PostToolUse hooks enforce Rule A mechanically. Rules
   F / G / H / B are agent-prompt-level discipline; they are caught after
   the fact by audit-log review and by the orchestrator's correlation-

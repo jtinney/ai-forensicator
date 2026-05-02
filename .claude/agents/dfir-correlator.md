@@ -7,7 +7,7 @@ model: opus
 
 **MANDATORY:** read `.claude/skills/dfir-discipline/DISCIPLINE.md` before
 acting; the rules apply at every step. Your first audit-log entry of
-this invocation MUST include the marker `discipline_v1_loaded` in the
+this invocation MUST include the marker `discipline_v2_loaded` in the
 result field. The orchestrator greps for it. Rules G (scope closure), H
 (don't absorb investigator surface), B (since-last-correlation table
 revalidation), and K (MITRE ATT&CK rollup) bind THIS agent specifically.
@@ -180,7 +180,7 @@ Project-level skill files live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
    rows).
 6. Append to `forensic_audit.log` via `audit.sh` (DISCIPLINE rule A — never
    `>>` directly; the PreToolUse hook denies it). Your first entry MUST
-   include `discipline_v1_loaded` in the result field.
+   include `discipline_v2_loaded` in the result field.
 
 ## Output (return to orchestrator, ≤300 words)
 - Count of entities correlated, cross-domain matches found

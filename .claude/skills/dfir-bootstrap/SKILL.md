@@ -436,7 +436,7 @@ grep -iE "usbstor|disk&ven" ./analysis/windows-artifacts/hives/SYSTEM.strings.tx
 - The DISCIPLINE.md rules (`.claude/skills/dfir-discipline/DISCIPLINE.md`) are
   loaded by every phase agent prompt with a `MANDATORY:` line. The first
   audit-log entry of each agent invocation includes the marker
-  `discipline_v1_loaded` as a self-attestation; bump the version (and update
+  `discipline_v2_loaded` as a self-attestation; bump the version (and update
   every agent prompt simultaneously) when the rules change substantively.
 - Bundle expansion in case-init.sh is disk-bounded: if the estimated
   expanded size of an archive exceeds 50% of free disk, the bundle is

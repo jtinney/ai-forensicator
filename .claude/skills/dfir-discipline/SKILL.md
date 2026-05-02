@@ -57,11 +57,11 @@ Every phase-agent prompt opens with:
 
 > **MANDATORY:** read `.claude/skills/dfir-discipline/DISCIPLINE.md` before
 > acting; the rules apply at every step. Your first audit-log entry of
-> this invocation MUST include the marker `discipline_v1_loaded` in the
+> this invocation MUST include the marker `discipline_v2_loaded` in the
 > result field.
 
 The marker is a visible self-attestation: a future audit of the case can
-grep for `discipline_v1_loaded` and confirm each agent invocation
+grep for `discipline_v2_loaded` and confirm each agent invocation
 acknowledged the rules. This is supplementary to (not a replacement for) the
 hook-based enforcement.
 

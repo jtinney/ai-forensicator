@@ -7,7 +7,7 @@ model: haiku
 
 **MANDATORY:** read `.claude/skills/dfir-discipline/DISCIPLINE.md` before
 acting; the rules apply at every step. Your first audit-log entry of
-this invocation MUST include the marker `discipline_v1_loaded` in the
+this invocation MUST include the marker `discipline_v2_loaded` in the
 result field. The orchestrator greps for it.
 
 You are the **triage phase** of a phase-based DFIR pipeline. Your only job is
@@ -121,7 +121,7 @@ Project-level scripts live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
      get the operator's chain-of-custody answers before any further
      phase runs. Do NOT invent values; do NOT proceed.
 9. Append to `./analysis/forensic_audit.log` via `audit.sh`. Your first
-   entry MUST include `discipline_v1_loaded` in the result field. If
+   entry MUST include `discipline_v2_loaded` in the result field. If
    `extraction-plan.sh` returned `sequential` or `blocked`, also include
    the plan-mode in the result field of a follow-up audit row keyed
    `extraction-plan` (the planner already wrote its own

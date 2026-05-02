@@ -7,7 +7,7 @@ model: sonnet
 
 **MANDATORY:** read `.claude/skills/dfir-discipline/DISCIPLINE.md` before
 acting; the rules apply at every step. Your first audit-log entry of
-this invocation MUST include the marker `discipline_v1_loaded` in the
+this invocation MUST include the marker `discipline_v2_loaded` in the
 result field. The orchestrator greps for it.
 
 You are the **survey phase** of a phase-based DFIR pipeline. You operate on
@@ -83,7 +83,7 @@ them verbatim for output paths; load the matching skill by path.
    (`<sha256>`, `<EV_ID>`, etc.) in the file.
    - **Header** must include: case ID, evidence ID, evidence sha256 (copy
      from `./analysis/manifest.md`), domain, surveyor agent version
-     (`dfir-surveyor / discipline_v1_loaded`), UTC timestamp.
+     (`dfir-surveyor / discipline_v2_loaded`), UTC timestamp.
    - **Tools run** lists every cheap-signal invocation:
      `<tool> -> <invocation> -> exit <code> -> <output path>`.
    - **Findings of interest** is 3–5 single-line bullets each with a

@@ -12,7 +12,7 @@
 - **Evidence ID:** EV01
 - **Evidence sha256:** 5b8c3e2a9f70a1b4c5d6e7f80991a2b3c4d5e6f7081929304a5b6c7d8e9f00ab
 - **Domain:** filesystem
-- **Surveyor agent version:** dfir-surveyor / discipline_v1_loaded
+- **Surveyor agent version:** dfir-surveyor / discipline_v2_loaded
 - **UTC timestamp:** 2026-04-26 14:43:21 UTC
 
 ## Tools run

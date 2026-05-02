@@ -12,7 +12,7 @@
 - **Evidence ID:** EV01
 - **Evidence sha256:** 70a8d3b9c5e4f211223344556677889900aabbccddeeff00112233445566778a
 - **Domain:** yara
-- **Surveyor agent version:** dfir-surveyor / discipline_v1_loaded
+- **Surveyor agent version:** dfir-surveyor / discipline_v2_loaded
 - **UTC timestamp:** 2026-04-26 15:02:14 UTC
 
 ## Tools run
