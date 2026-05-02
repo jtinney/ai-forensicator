@@ -19,12 +19,12 @@ These rules apply at every step of every phase agent (`dfir-triage`,
 
   Examples:
 
-    2026-05-02 14:12:33 UTC | dfir-triage start | discipline_v3_loaded; 4 evidence items EV01..EV04 | dispatch surveyors per ORCHESTRATE Phase 2
+    2026-05-02 14:12:33 UTC | dfir-triage start | discipline_v4_loaded; 4 evidence items EV01..EV04 | dispatch surveyors per ORCHESTRATE Phase 2
     2026-05-02 14:18:07 UTC | fls -r -o 65664 EV01.E01 | 11553 entries; NTFS at offset 65664 | feed mactime; pivot logon timestamps in survey-EV01.md
 </audit-log-format>
 
 <marker-self-attestation>
-  Every agent invocation emits the literal marker `discipline_v3_loaded` in
+  Every agent invocation emits the literal marker `discipline_v4_loaded` in
   the `result` field of its first audit row. The orchestrator and dfir-qa
   grep for it. A missing marker is a self-attestation failure recorded by
   dfir-qa as `INTEGRITY-VIOLATION: missing discipline marker`.
@@ -80,7 +80,7 @@ wall-clock) times will not survive cross-examination.
 
 **How to apply:**
 - The first audit-log entry of every agent invocation MUST include
-  `discipline_v3_loaded` somewhere in the `result` field. The orchestrator
+  `discipline_v4_loaded` somewhere in the `result` field. The orchestrator
   will grep for this marker.
 - Never `echo "<UTC>" >> ./analysis/forensic_audit.log` or
   `tee -a ./analysis/forensic_audit.log`. The PreToolUse hook denies
@@ -102,7 +102,7 @@ deterministically without consulting the project README.
 | # | Layer | Path | Origin | Mutability | Integrity ledger | Hook |
 |---|-------|------|--------|------------|------------------|------|
 | 1 | Original evidence | `./evidence/` | Operator drop at intake | Read-only after intake (`chmod a-w` recursive) | `analysis/manifest.md` | Permission deny + filesystem lock |
-| 2 | Bundle expansion | `./working/<bundle>/` | `case-init.sh` expanding archives at intake | Read-only by convention | `analysis/manifest.md` (`bundle-member` rows) | None — manifest-locked at write-once intake |
+| 2 | Bundle expansion + disk-image mounts | `./working/<bundle>/`, `./working/mounts/<EV>/p<M>/` | `case-init.sh` expanding archives + `diskimage-mount.sh` exposing read-only mounts | Read-only by convention; mounts read-only by kernel | `analysis/manifest.md` (`bundle-member`, `disk-mount` rows) | None — manifest-locked at write-once intake; mounts detached at case close |
 | 3 | Tool reports | `./analysis/<domain>/` | Surveyor + investigator output (CSVs, JSON, `findings.md`, `survey-EVnn.md`) | Mutable (recomputable) | None — by design | audit-log hooks only |
 | 4 | Derived artifacts | `./exports/<domain>/...` | Carved bytes, exported hives, dumped memory regions, sliced pcaps, reassembled HTTP objects | Write-once; mutation = chain-of-custody concern | `analysis/exports-manifest.md` | `audit-exports.sh` PostToolUse, depth-unbounded |
 | 5 | Reports | `./reports/` | Final deliverables (`final.md`, `stakeholder-summary.md`, `qa-review.md`, `00_intake.md`) | Mutable | None | None |
@@ -576,46 +576,105 @@ itself emits a tree we don't control.
 
 ---
 
-<rule id="P-diskimage" binds="dfir-triage,dfir-surveyor">
-  <name>Non-E01 disk images are converted to E01 with hashes</name>
+<rule id="P-diskimage" binds="dfir-triage,dfir-surveyor,dfir-qa">
+  <name>Disk images are mounted read-only via qemu-nbd; never converted</name>
   <statement>
-    Every disk-image evidence item that is not already E01 is converted
-    to E01 with sha256 hashing, in `./working/e01/`, before any analysis
-    tool reads it. The conversion event is audited; the source hash and
-    the post-conversion E01 hash are both recorded in `./analysis/manifest.md`.
+    Every disk-image evidence item — E01, raw `.dd`/`.raw`/`.img`,
+    `.vmdk`, `.vhd`, `.vhdx`, `.qcow2` — is exposed read-only at
+    `/dev/nbd<N>` and mounted under `./working/mounts/<EV>/p<M>/` via
+    the canonical adapter chain below. Downstream tools operate off the
+    mount; no conversion to E01 is performed. The original artifact's
+    sha256 and the byte-stream sha256 of `/dev/nbd<N>` are both recorded
+    in `./analysis/manifest.md`. Mounts persist for the duration of
+    analysis and are detached at case close, or per stage when
+    sequential mode is active.
   </statement>
   <why>
-    E01 is the project's canonical disk-image envelope. It carries
-    embedded chain-of-custody metadata, per-segment integrity hashes,
-    and uniform support across every disk-domain tool (TSK, ewfmount,
-    Velociraptor). Mixed formats (raw `.dd`, `.vmdk`, `.vhd`, `.vhdx`,
-    split `.001`, `.ad1`) force per-tool handling and create
-    format-specific bug surface.
+    Conversion to E01 fails on virtual disks: `ewfacquire` reads
+    container bytes (descriptor + sparse extents) verbatim and produces
+    a malformed E01 that downstream tools reject as corrupt. Mounting
+    via `qemu-nbd` (and `ewfmount` for E01) collapses every format into
+    a single read-only block-device + filesystem-mount surface, so
+    downstream tools see the same shape regardless of source format.
+    Mounts are read-only, reversible, and consume ~0 disk — they remove
+    the conversion class of failures entirely.
   </why>
   <how>
-    - Conversion runs as part of triage's working-copy preparation.
-    - Source: `./evidence/<file>` (locked read-only by case-init).
-    - Destination: `./working/e01/<source-name>.E01`.
-    - Tooling: `ewfacquire` (libewf2). Compression: best. Hash: sha256.
-    - Manifest rows: one row for the source (`type=blob`), one row for
-      the converted E01 (`type=conversion-e01`, `parent=EV<NN>`,
-      `notes=ewfacquire compression=best hash=sha256`).
-    - When conversion fails (corrupt source, unsupported format,
-      `ewfacquire` missing), mark the originating lead BLOCKED per
-      Rule P-priority.
-    - E01 sources pass through unchanged.
+    Single source of truth for the adapter chain and the mandatory
+    audit-row sequence:
+
+    | Source                                   | Adapter chain                                                  |
+    |------------------------------------------|----------------------------------------------------------------|
+    | `.E01` (single or split segments)        | `ewfmount` → `qemu-nbd -f raw` → `mount -o ro,noload`          |
+    | `.dd` / `.raw` / `.img`                  | `qemu-nbd -f raw` → `mount -o ro,noload`                       |
+    | `.vmdk` (any subformat)                  | `qemu-nbd -f vmdk` → `mount -o ro,noload`                      |
+    | `.vhd` (fixed / dynamic)                 | `qemu-nbd -f vpc` → `mount -o ro,noload`                       |
+    | `.vhdx`                                  | `qemu-nbd -f vhdx` → `mount -o ro,noload`                      |
+    | `.qcow2`                                 | `qemu-nbd -f qcow2` → `mount -o ro,noload`                     |
+    | encrypted (any of above)                 | BLOCK before attach — `L-MOUNT-DISK-NN; suggested-fix=provide-key` |
+
+    Triage invokes the canonical helper:
+    `bash .claude/skills/dfir-bootstrap/diskimage-mount.sh <relpath> <EV>`.
+    The helper enforces: format detection → `modprobe nbd max_part=16`
+    if needed → adapter attach → `mmls /dev/nbd<N>` → partition mounts
+    → `sha256sum <source>` → `sha256sum /dev/nbd<N>` → sentinel write
+    → trap-driven detach on every exit path. Manifest rows: `type=blob`
+    for the source, `type=disk-mount` for the byte stream
+    (`parent=EV<NN>`, `notes=adapter=<chain>; mount-points=<list>; nbd-byte-sha256=<sha>`).
+    Detachment runs from `bash diskimage-unmount.sh <EV>` (sequential
+    cleanup) or `bash diskimage-unmount-all.sh` (case close, QA gate).
+
+    Every command run by the helper — and every command an analyst
+    runs against a mount or `/dev/nbd<N>` afterwards — is recorded as an
+    exact-command audit row per <rule ref="DISCIPLINE §A.1"/>. The row's
+    `result` field carries the literal command line, the exit code, and
+    any key=val pairs needed to reproduce the operation. No
+    paraphrasing, no abbreviation. Investigator review must be able to
+    replay the case from the audit log alone.
+
+    BLOCK conditions (mark the lead per <rule ref="DISCIPLINE §P-priority"/>):
+    - `qemu-nbd` missing → `suggested-fix=install-package; tool-needed=qemu-nbd`
+    - `ewfmount` missing on an E01 source → `suggested-fix=install-package; tool-needed=ewfmount`
+    - encrypted virtual disk → `suggested-fix=provide-key`
+    - filesystem driver missing (HFS+, APFS, ZFS) → `suggested-fix=install-driver; tool-needed=<fs-driver>`
+    - corrupt source / `qemu-nbd --connect` exits nonzero → `L-MOUNT-FAIL-NN`,
+      trap detaches, audit row records the failure command line and exit code.
   </how>
 </rule>
 
 <example for="P-diskimage">
   ```bash
-  # Convert .dd to E01:
-  ewfacquire \
-      -t ./working/e01/EV01 \
-      -c best -d sha256 -u -CCASEID -DDESC -EEXAM -eEVID -mremovable -Mlogical -nNOTES \
-      ./evidence/EV01.dd
-  # Resulting file: ./working/e01/EV01.E01
-  bash audit.sh "ewfacquire EV01.dd -> E01" "sha256-source=<src> sha256-e01=<dst>" "manifest append; surveyor reads from working/e01/EV01.E01"
+  # Bootstrap nbd kernel module (idempotent)
+  lsmod | grep -q '^nbd' || sudo modprobe nbd max_part=16
+  bash audit.sh "triage: modprobe-nbd" "cmd: modprobe nbd max_part=16; exit=0" "qemu-nbd attach"
+
+  # Detect format
+  qemu-img info ./evidence/EV01.vmdk
+  bash audit.sh "triage: detect-format" "cmd: qemu-img info ./evidence/EV01.vmdk; exit=0; format=vmdk virtual-size=64G" "qemu-nbd attach"
+
+  # Attach VMDK as /dev/nbd0 (read-only)
+  sudo qemu-nbd --read-only --cache=none --format=vmdk --connect=/dev/nbd0 ./evidence/EV01.vmdk
+  bash audit.sh "triage: nbd-attach" "cmd: qemu-nbd --read-only --cache=none --format=vmdk --connect=/dev/nbd0 ./evidence/EV01.vmdk; exit=0; nbd=/dev/nbd0" "mmls + mount partitions"
+
+  # Inspect partition table
+  mmls /dev/nbd0 | tee ./analysis/filesystem/mmls-EV01.txt
+  bash audit.sh "triage: mmls" "cmd: mmls /dev/nbd0; exit=0; partitions=2" "mount p1, p2"
+
+  # Mount each filesystem partition
+  mkdir -p ./working/mounts/EV01/p1
+  sudo mount -o ro,noload /dev/nbd0p1 ./working/mounts/EV01/p1
+  bash audit.sh "triage: partition-mount" "cmd: mount -o ro,noload /dev/nbd0p1 ./working/mounts/EV01/p1; exit=0; fs=ntfs" "hash mount-source"
+
+  # Hash original artifact + mount-source byte stream
+  sha256sum ./evidence/EV01.vmdk
+  sha256sum /dev/nbd0
+  bash audit.sh "triage: source-hash" "cmd: sha256sum ./evidence/EV01.vmdk; exit=0; sha=<src-sha>" "manifest blob row"
+  bash audit.sh "triage: nbd-stream-hash" "cmd: sha256sum /dev/nbd0; exit=0; sha=<nbd-sha>" "manifest disk-mount row"
+
+  # Detach (every exit path, via trap)
+  sudo umount ./working/mounts/EV01/p1
+  sudo qemu-nbd --disconnect /dev/nbd0
+  bash audit.sh "triage: nbd-detach" "cmd: qemu-nbd --disconnect /dev/nbd0; exit=0" "case-close: sentinel marked unmounted"
   ```
 </example>
 
@@ -785,10 +844,10 @@ itself emits a tree we don't control.
 
 <example for="P-yara">
   ```bash
-  # Disk image scan:
-  yara -r -s -p 4 /opt/yara-rules/malware/ ./working/e01/EV01.E01 \
+  # Disk image scan against the mounted filesystem tree:
+  yara -r -s -p 4 /opt/yara-rules/malware/ ./working/mounts/EV01/p1/ \
       > ./exports/yara_hits/yara-EV01.txt
-  bash audit.sh "yara -r /opt/yara-rules/malware EV01" "<hit count>" "review hits; pivot per matched rule"
+  bash audit.sh "yara: dir-scan" "cmd: yara -r -s -p 4 /opt/yara-rules/malware/ ./working/mounts/EV01/p1/; exit=0; hits=<n>" "review hits; pivot per matched rule"
   ```
 </example>
 
@@ -843,7 +902,7 @@ itself emits a tree we don't control.
 
 - The DISCIPLINE.md path is referenced from each agent's frontmatter as
   `MANDATORY` — the agent harness does not enforce reading; the marker
-  `discipline_v3_loaded` is the self-attestation signal.
+  `discipline_v4_loaded` is the self-attestation signal.
 - The PreToolUse / PostToolUse hooks enforce Rule A mechanically. Rules
   F / G / H / B are agent-prompt-level discipline; they are caught after
   the fact by audit-log review and by the orchestrator's correlation-

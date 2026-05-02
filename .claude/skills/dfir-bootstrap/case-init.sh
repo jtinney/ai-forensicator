@@ -77,6 +77,7 @@ dirs=(
     "./analysis/sigma/jsonl"
     "./analysis/sigma/hits"
     "./working"
+    "./working/mounts"
     "./exports"
     # Canonical exports/ taxonomy — see dfir-discipline/DISCIPLINE.md
     # "Layer model" subsection. Pre-scaffolded so domain skills do not
@@ -581,6 +582,70 @@ if [[ -d "$EVIDENCE_DIR" ]]; then
     fi
 
     echo "[case-init] evidence manifest updated -> $MANIFEST (walk=${walk_count}, rows_appended=${rows_appended_this_run})"
+fi
+
+# ---------- disk-image mount sentinel sweep ----------
+# Disk images mounted via diskimage-mount.sh leave a sentinel JSON at
+# ./working/mounts/.<EV>.mount.json. Each sentinel maps an existing
+# evidence-blob row to a /dev/nbd<N> byte stream (the final-working-artifact
+# equivalent under DISCIPLINE §P-diskimage). For each sentinel that does NOT
+# yet have a `disk-mount` row in manifest.md, append one. Idempotent — safe
+# to re-run when triage adds more mounts.
+MOUNTS_DIR="./working/mounts"
+if [[ -d "$MOUNTS_DIR" ]]; then
+    shopt -s nullglob
+    mount_rows_appended=0
+    for sentinel in "${MOUNTS_DIR}"/.*.mount.json; do
+        [[ -f "$sentinel" ]] || continue
+        base="$(basename "$sentinel")"
+        ev="${base#.}"; ev="${ev%.mount.json}"
+        [[ "$ev" =~ ^EV[0-9]{2,}$ ]] || continue
+
+        # Skip if a disk-mount row already exists for this EV.
+        if grep -qE "^\| ${ev}-MOUNT \| " "$MANIFEST" 2>/dev/null; then
+            continue
+        fi
+
+        # Read sentinel fields (cheap awk/grep, no jq dependency).
+        nbd_sha="$(grep -oE '"nbd_byte_sha256":[[:space:]]*"[^"]+"' "$sentinel" 2>/dev/null \
+                   | head -1 | sed -E 's/.*"nbd_byte_sha256":[[:space:]]*"([^"]+)".*/\1/')"
+        src_sha="$(grep -oE '"source_sha256":[[:space:]]*"[^"]+"' "$sentinel" 2>/dev/null \
+                   | head -1 | sed -E 's/.*"source_sha256":[[:space:]]*"([^"]+)".*/\1/')"
+        fmt="$(grep -oE '"format":[[:space:]]*"[^"]+"' "$sentinel" 2>/dev/null \
+                | head -1 | sed -E 's/.*"format":[[:space:]]*"([^"]+)".*/\1/')"
+        nbd_dev="$(grep -oE '"nbd_device":[[:space:]]*"[^"]+"' "$sentinel" 2>/dev/null \
+                   | head -1 | sed -E 's/.*"nbd_device":[[:space:]]*"([^"]+)".*/\1/')"
+        src_rel="$(grep -oE '"source_relpath":[[:space:]]*"[^"]+"' "$sentinel" 2>/dev/null \
+                   | head -1 | sed -E 's/.*"source_relpath":[[:space:]]*"([^"]+)".*/\1/')"
+        adapter="$(grep -oE '"adapter_chain":[[:space:]]*"[^"]+"' "$sentinel" 2>/dev/null \
+                   | head -1 | sed -E 's/.*"adapter_chain":[[:space:]]*"([^"]+)".*/\1/')"
+        mounts_csv="$(grep -oE '"mount_points":[[:space:]]*\[[^]]*\]' "$sentinel" 2>/dev/null \
+                      | head -1 | grep -oE '"[^"]+"' | tr -d '"' | paste -sd, -)"
+
+        # Refuse to write the row if either hash is empty — that's an
+        # incomplete sentinel from a failed mount run; force re-mount.
+        if [[ -z "$nbd_sha" || -z "$src_sha" ]]; then
+            bash "$AUDIT_SH" "case-init mount-sentinel-incomplete" \
+                "sentinel=${sentinel} src_sha=${src_sha:-empty} nbd_sha=${nbd_sha:-empty}" \
+                "operator: re-run diskimage-mount.sh ${ev}" >/dev/null 2>&1 || true
+            echo "[case-init] WARN: incomplete mount sentinel for $ev — skipping disk-mount row" >&2
+            continue
+        fi
+
+        # Compose notes column with adapter chain + mount points + nbd byte hash.
+        notes_field="adapter=${adapter}; mount-points=${mounts_csv:-none}; nbd-byte-sha256=${nbd_sha}; nbd=${nbd_dev}; format=${fmt}"
+        # We use ev_id "<EV>-MOUNT" so the manifest row is unique per EV
+        # and easily greppable (manifest-check.sh keys off this prefix).
+        append_manifest_row "${ev}-MOUNT" "$(basename "$src_rel")" "$nbd_dev" \
+            "disk-mount" "0" "$nbd_sha" "$ev" "$notes_field"
+        mount_rows_appended=$((mount_rows_appended + 1))
+        bash "$AUDIT_SH" "case-init mount-sentinel" \
+            "appended disk-mount row for $ev (format=${fmt}, nbd-sha=${nbd_sha:0:16})" \
+            "surveyor reads from mount-points or ${nbd_dev}" >/dev/null 2>&1 || true
+    done
+    if [[ "$mount_rows_appended" -gt 0 ]]; then
+        echo "[case-init] disk-mount manifest rows appended: $mount_rows_appended"
+    fi
 fi
 
 # ---------- 00_intake.md ----------

@@ -5,6 +5,7 @@
   <rule>Tool order is the <code>sigma-hunting</code> entry of DISCIPLINE.md §P-priority. Surveyor runs <code>chainsaw hunt --sigma /opt/sigma-rules/sigma --mapping /opt/sigma-rules/mappings/sigma-event-logs-all.yml --csv -o ./analysis/sigma/&lt;EVID&gt;/ &lt;evtx_dir&gt;</code>.</rule>
   <rule>Hits go to <code>./analysis/sigma/&lt;EVID&gt;/</code> (CSVs). Matched-event byte extracts go to <code>./exports/sigma_hits/&lt;EVID&gt;/&lt;rule_id&gt;/</code>.</rule>
   <rule>Do not author, cache, or vendor rules inside the project workspace. Operator maintains <code>/opt/sigma-rules/</code> via the SIFT install script.</rule>
+  <rule>EVTX corpus on a disk image is read from the partition mount at <code>./working/mounts/&lt;EV&gt;/p&lt;M&gt;/Windows/System32/winevt/Logs/</code> per DISCIPLINE.md §P-diskimage. Do NOT extract via <code>icat</code> first when the mount is available.</rule>
 </protocol>
 
 ## Use this skill when

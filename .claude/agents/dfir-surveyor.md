@@ -5,7 +5,7 @@ tools: Bash, Read, Write, Edit, Glob, Grep
 model: sonnet
 ---
 
-<mandatory>Read `.claude/skills/dfir-discipline/DISCIPLINE.md` before acting. Your first audit-log entry of this invocation MUST contain `discipline_v3_loaded` in the result field.</mandatory>
+<mandatory>Read `.claude/skills/dfir-discipline/DISCIPLINE.md` before acting. Your first audit-log entry of this invocation MUST contain `discipline_v4_loaded` in the result field.</mandatory>
 
 <role>Survey phase: one evidence item × one domain. Run the cheapest, highest-signal passes and emit leads.</role>
 
@@ -15,6 +15,14 @@ model: sonnet
 - Case question if known; otherwise `unguided`
 - CWD: `./cases/<CASE_ID>/`. Project skills live at `${CLAUDE_PROJECT_DIR}/.claude/skills/...`.
 </inputs>
+
+<disk-image-reads>
+When `EVIDENCE_ID` has a `disk-mount` row in `./analysis/manifest.md` (key `<EV>-MOUNT`), read off the read-only mount surface produced by `diskimage-mount.sh` per <rule ref="DISCIPLINE §P-diskimage"/>:
+- **Raw-stream tools** (`mmls`, `fls`, `fsstat`, `icat`, `tsk_recover`, `log2timeline.py`, `bulk_extractor`) → `/dev/nbd<N>` (read from the manifest row's `notes` column, key `nbd=`).
+- **File-tree tools** (`EvtxECmd`, `RECmd`, `MFTECmd`, `AmcacheParser`, `yara` against a directory) → `./working/mounts/<EV>/p<M>/` (mount points listed in the row's `notes` column, key `mount-points=`).
+
+NEVER invoke `ewfacquire` or otherwise convert the source. The mount IS the surface. Detachment is owned by `diskimage-unmount.sh` / `diskimage-unmount-all.sh` (sequential cleanup + QA case-close).
+</disk-image-reads>
 
 <domain-map>
 Canonical `DOMAIN` names match the subdirs `case-init.sh` creates. Use them verbatim for output paths; load the skill by path.
@@ -53,7 +61,7 @@ On non-zero exit, STOP and report the mismatch. Never silently re-hash. Applies 
 <step n="6">Write tool output (survey CSVs, parsed JSON) under the domain subdir.</step>
 
 <step n="7">Instantiate the template at `./analysis/<DOMAIN>/survey-<EVIDENCE_ID>.md`. The six required sections in order: `# Header`, `## Tools run`, `## Findings of interest`, `## Lead summary table`, `## Negative results`, `## Open questions`. Populate every field; never leave placeholders (`<sha256>`, `<EV_ID>`, etc.) in the file.
-- **Header**: case ID, evidence ID, evidence sha256 (copy from `./analysis/manifest.md`), domain, surveyor agent version (`dfir-surveyor / discipline_v3_loaded`), UTC timestamp.
+- **Header**: case ID, evidence ID, evidence sha256 (copy from `./analysis/manifest.md`), domain, surveyor agent version (`dfir-surveyor / discipline_v4_loaded`), UTC timestamp.
 - **Tools run**: every cheap-signal invocation as `<tool> -> <invocation> -> exit <code> -> <output path>`.
 - **Findings of interest**: 3–5 single-line bullets, each with a line-anchored pointer (`<file>#L<n>` or `<file>#L<n>-L<m>`) and a stub lead ID at the end.
 - **Lead summary table**: columns `lead_id | priority | hypothesis | next-step query | est-cost`. At least one data row, or an explicit `(no leads)` placeholder.

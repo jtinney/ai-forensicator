@@ -12,7 +12,7 @@ This skill binds the orchestrator to DISCIPLINE §A (audit-log integrity), §B
 surface), §I (no lead un-worked), §J (intake completeness), §K (ATT&CK
 tagging), §L (multi-evidence path encoding), §P-pcap, §P-diskimage, §P-priority,
 §P-yara, and §P-sigma. Every dispatched agent invocation MUST emit the marker
-`discipline_v3_loaded` in its return result; the orchestrator MUST verify
+`discipline_v4_loaded` in its return result; the orchestrator MUST verify
 that marker before treating the agent's output as authoritative.
 </rules-binding>
 
@@ -74,6 +74,9 @@ write it on first append.
 | Correlator gap (phase 4) | `L-CORR-NN` | `L-CORR-03` |
 | Correlator re-extraction (phase 4, sequential mode) | `L-EXTRACT-RE-NN` | `L-EXTRACT-RE-01` |
 | Bootstrap disk-pressure block (phase 1) | `L-EXTRACT-DISK-NN` | `L-EXTRACT-DISK-01` |
+| Disk-image mount block (phase 1) | `L-MOUNT-DISK-NN` | `L-MOUNT-DISK-01` |
+| Disk-image mount failure (phase 1) | `L-MOUNT-FAIL-NN` | `L-MOUNT-FAIL-01` |
+| Disk-mount manifest invariant (manifest-check) | `L-MOUNT-LEDGER-NN` | `L-MOUNT-LEDGER-01` |
 
 Each prefix is globally unique per source — parallel agents need no shared
 lock. `NN` is zero-padded and counter-scoped to the invocation.
@@ -81,12 +84,12 @@ lock. `NN` is zero-padded and counter-scoped to the invocation.
 <protocol name="Forward dispatch">
 
 <phase n="1" name="Triage" mode="blocking">
-  <step n="1">Invoke `dfir-triage` with case ID and evidence path. Triage runs `extraction-plan.sh` before `case-init.sh`; the resulting `./analysis/extraction-plan.md` decides bulk vs. sequential staging.</step>
+  <step n="1">Invoke `dfir-triage` with case ID and evidence path. Triage runs `extraction-plan.sh` → `case-init.sh` (extraction) → `diskimage-plan.sh` → `diskimage-mount.sh` per disk image → `case-init.sh` again (sentinel sweep). The two plan files (`./analysis/extraction-plan.md`, `./analysis/diskimage-plan.md`) decide bulk vs. sequential staging together.</step>
   <step n="2">On return, read `analysis/manifest.md` headers only.</step>
-  <step n="3">Read the `Mode` field of `./analysis/extraction-plan.md` and branch:
-    - `bulk` → advance to Phase 2.
-    - `sequential` → enter `<sequential-extraction>` (below) to drive Phases 2/3 stage-by-stage. Do NOT fan out a single Phase 2 wave across all archives.
-    - `blocked` → surface the `L-EXTRACT-DISK-NN` lead (planner appended a BLOCKED row to `leads.md`) and stop. Operator frees disk or remounts before any further phase runs.
+  <step n="3">Read the `Mode` field of BOTH `./analysis/extraction-plan.md` AND `./analysis/diskimage-plan.md`; the most-restrictive mode wins (`blocked` > `sequential` > `bulk`):
+    - `bulk` (both) → advance to Phase 2.
+    - `sequential` (either) → enter `<sequential-extraction>` (below) to drive Phases 2/3 stage-by-stage. Do NOT fan out a single Phase 2 wave across all archives.
+    - `blocked` (either) → surface the BLOCKED lead (`L-EXTRACT-DISK-NN`, `L-MOUNT-DISK-NN`, or `L-MOUNT-FAIL-NN`) and stop. Operator addresses the gap before any further phase runs.
   </step>
 </phase>
 
@@ -109,7 +112,7 @@ lock. `NN` is zero-padded and counter-scoped to the invocation.
   1. **Extract** stage `N` if not yet on disk (single-element evidence subdir to case-init's bundle loop, or reuse triage's archive-specific extract). Tree at `./working/<basename>/`. Audit: `[disk] stage N: extract <archive>` via `audit.sh`.
   2. **Survey** — Phase 2 fan-out ONLY for `(stage-N evidence × applicable domains)`. Other stages remain unexpanded; surveyor MUST NOT touch them.
   3. **Investigate** — Phase 3 wave ONLY on `leads.md` rows from stage `N`'s surveys (`L-<EVID-of-stage-N>-...`). Honor the lead terminal-status invariant before advancing.
-  4. **Cleanup** — once stage `N`'s investigators settle, run `bash .claude/skills/dfir-bootstrap/extraction-cleanup.sh <basename-of-stage-N>`. Helper deletes ONLY `./working/<basename>/`; `./analysis/<domain>/`, `./exports/**`, `./analysis/manifest.md`, `./analysis/leads.md` preserved. Helper writes its own audit row; orchestrator ALSO writes `[disk] stage N: cleanup <archive> deleted=<N> files`.
+  4. **Cleanup** — once stage `N`'s investigators settle, run `bash .claude/skills/dfir-bootstrap/extraction-cleanup.sh <basename-of-stage-N>`. Helper FIRST calls `diskimage-unmount.sh <EV>` for any `<EV>` whose source path lives under `./working/<basename>/` (refuses to delete if any unmount fails), THEN deletes `./working/<basename>/`. `./analysis/<domain>/`, `./exports/**`, `./analysis/manifest.md`, `./analysis/leads.md`, and the disk-mount sentinels (now `mounted=false`) are preserved. Helper writes its own audit row; orchestrator ALSO writes `[disk] stage N: cleanup <archive> deleted=<N> files`.
   5. **Advance** — increment `N`. `N <= K` repeats from step 1; else proceed to Phase 4.
 
   `L-EXTRACT-RE-NN` re-extraction leads (correlator-driven; Phase 4) trigger an additional cycle: re-extract the named archive (when the lead names a path subset, restrict via `unzip <archive> "<subset>/*"` or `tar --wildcards`), run a scoped Phase 2/3 mini-wave, then call `extraction-cleanup.sh`.

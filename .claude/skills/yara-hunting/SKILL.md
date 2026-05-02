@@ -5,6 +5,7 @@
   <rule>Tool order is the <code>yara-hunting</code> entry of DISCIPLINE.md §P-priority. Surveyor runs <code>yara -r /opt/yara-rules/ &lt;target&gt;</code>.</rule>
   <rule>Hits go to <code>./exports/yara_hits/</code>. Summaries to <code>./analysis/yara/</code>.</rule>
   <rule>Do not author, cache, or vendor rules inside the project workspace. Operator maintains <code>/opt/yara-rules/</code> via the SIFT install script.</rule>
+  <rule>Disk-image targets are the read-only mount produced by <code>diskimage-mount.sh</code> per DISCIPLINE.md §P-diskimage. Scan filesystem trees at <code>./working/mounts/&lt;EV&gt;/p&lt;M&gt;/</code> or block streams at <code>/dev/nbd&lt;N&gt;</code>; never the original <code>.E01</code>/<code>.vmdk</code>/etc. file.</rule>
 </protocol>
 
 ## Use this skill when

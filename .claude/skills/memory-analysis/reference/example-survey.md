@@ -12,7 +12,7 @@
 - **Evidence ID:** EV03
 - **Evidence sha256:** a14d2e9b6c8f0712304a5b6c7d8e9f001112223344556677889900aabbccddee
 - **Domain:** memory
-- **Surveyor agent version:** dfir-surveyor / discipline_v3_loaded
+- **Surveyor agent version:** dfir-surveyor / discipline_v4_loaded
 - **UTC timestamp:** 2026-04-26 14:25:03 UTC
 
 ## Tools run

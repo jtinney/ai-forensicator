@@ -21,7 +21,7 @@ Binds DISCIPLINE §A (audit-log integrity), §B (headline revalidation), §F
 (lead surface), §I (no lead un-worked), §J (intake completeness), §K
 (ATT&CK tagging), §L (multi-evidence path encoding), §P-pcap, §P-diskimage,
 §P-priority, §P-yara, §P-sigma. Every audit-log write goes through `audit.sh`. Every
-pivot emits the marker `discipline_v3_loaded` in its action context.
+pivot emits the marker `discipline_v4_loaded` in its action context.
 </rules-binding>
 
 ## Operating philosophy

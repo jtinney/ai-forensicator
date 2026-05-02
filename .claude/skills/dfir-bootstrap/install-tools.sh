@@ -71,6 +71,8 @@ BASE_APT_REQUIRED=(
     sleuthkit
     libewf            # modern libewf shared lib (used by sleuthkit, plaso, etc.)
     libewf-tools      # ewfinfo / ewfverify / ewfmount / ewfacquire / ewfexport
+    qemu-utils        # qemu-nbd + qemu-img — disk-image read-only mount adapter (DISCIPLINE §P-diskimage)
+    fuse              # ewfmount FUSE backend
     testdisk
     hashdeep
     yara

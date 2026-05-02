@@ -109,6 +109,12 @@ bin_check img_stat || true
 bin_check ewfinfo || true
 bin_check ewfverify || true
 bin_check ewfmount || true
+bin_check ewfacquire || true
+bin_check qemu-nbd || true
+bin_check qemu-img || true
+bin_check fusermount || true
+bin_check mount || true
+bin_check umount || true
 bin_check log2timeline.py || true
 bin_check psort.py || true
 bin_check pinfo.py || true
@@ -400,6 +406,25 @@ else
     printf "| sleuthkit | RED | missing fls/mactime/libewf — install \`sleuthkit\` + \`libewf\` (or \`libewf2\`) |\n"
 fi
 
+# disk-image-mount — needs qemu-nbd + qemu-img (always) AND ewfmount (E01 sources only)
+# Probe nbd kernel module for informational purposes; mount script loads it on demand.
+NBD_NOTE=""
+if lsmod 2>/dev/null | grep -q '^nbd'; then
+    NBD_NOTE="nbd module loaded"
+elif modinfo nbd >/dev/null 2>&1; then
+    NBD_NOTE="nbd module installed (load on demand)"
+else
+    NBD_NOTE="nbd module absent — kernel may not support qemu-nbd"
+fi
+if command -v qemu-nbd >/dev/null 2>&1 && command -v qemu-img >/dev/null 2>&1 \
+   && command -v ewfmount >/dev/null 2>&1; then
+    printf "| disk-image-mount | GREEN | qemu-nbd + qemu-img + ewfmount present; %s |\n" "$NBD_NOTE"
+elif command -v qemu-nbd >/dev/null 2>&1 && command -v qemu-img >/dev/null 2>&1; then
+    printf "| disk-image-mount | YELLOW | qemu-nbd + qemu-img present, ewfmount missing — E01 sources BLOCK; install \`libewf-tools\`; %s |\n" "$NBD_NOTE"
+else
+    printf "| disk-image-mount | RED | qemu-nbd / qemu-img missing — install \`qemu-utils\`; %s |\n" "$NBD_NOTE"
+fi
+
 # plaso-timeline
 if command -v log2timeline.py >/dev/null 2>&1; then
     printf "| plaso-timeline | GREEN | log2timeline.py on PATH |\n"
@@ -491,6 +516,16 @@ if command -v fls >/dev/null 2>&1 && command -v mactime >/dev/null 2>&1 \
     printf "SKILL_STATUS:sleuthkit=GREEN\n"
 else
     printf "SKILL_STATUS:sleuthkit=RED\n"
+fi
+
+# disk-image-mount
+if command -v qemu-nbd >/dev/null 2>&1 && command -v qemu-img >/dev/null 2>&1 \
+   && command -v ewfmount >/dev/null 2>&1; then
+    printf "SKILL_STATUS:disk-image-mount=GREEN\n"
+elif command -v qemu-nbd >/dev/null 2>&1 && command -v qemu-img >/dev/null 2>&1; then
+    printf "SKILL_STATUS:disk-image-mount=YELLOW\n"
+else
+    printf "SKILL_STATUS:disk-image-mount=RED\n"
 fi
 
 # plaso-timeline

@@ -278,6 +278,78 @@ for w in walked:
             "fix":      f"bundle {ev_id} has {len(member_rows)} member rows but {on_disk_count} files on disk under {dest}; partial expansion — operator clears {dest} and re-runs case-init.sh",
         })
 
+# ---- 3.5 disk-mount rows must have a parent blob row + non-empty hashes ----
+# Every disk-image mount writes a manifest row keyed `<EV>-MOUNT` of
+# type=disk-mount, with parent=<EV>. The parent row must exist (the
+# original-evidence blob) AND both rows must carry non-empty sha256.
+# When the sentinel says mounted=true, /dev/nbd<N> must still be a
+# block device (kernel-attached). Failures appear as L-MOUNT-LEDGER-NN.
+mount_rows = [r for r in rows if r["type"] == "disk-mount"]
+mount_violations = []
+
+import glob
+sentinel_by_ev = {}
+for s in glob.glob("./working/mounts/.*.mount.json"):
+    bn = os.path.basename(s)
+    ev = bn[1:].rsplit(".mount.json", 1)[0]
+    if re.match(r"^EV[0-9]{2,}$", ev):
+        try:
+            sentinel_by_ev[ev] = json.load(open(s, "r", encoding="utf-8"))
+        except Exception:
+            sentinel_by_ev[ev] = None
+
+for r in mount_rows:
+    ev = r["ev_id"]
+    parent = r["parent"]
+    # ev_id format is "<PARENT>-MOUNT"; parent column should be the parent EV id
+    if not ev.endswith("-MOUNT"):
+        mount_violations.append({
+            "kind":  "disk-mount-id-malformed",
+            "path":  r["path"],
+            "ev_id": ev,
+            "fix":   f"disk-mount row {ev} should be keyed '<PARENT-EV>-MOUNT'; re-run case-init.sh after correcting the row",
+        })
+        continue
+    expected_parent = ev[:-len("-MOUNT")]
+    if parent != expected_parent:
+        mount_violations.append({
+            "kind":  "disk-mount-parent-mismatch",
+            "ev_id": ev,
+            "fix":   f"disk-mount row {ev} declares parent='{parent}' but ev_id implies parent='{expected_parent}'; re-run case-init.sh after correcting the row",
+        })
+    parent_row = by_ev.get(expected_parent)
+    if not parent_row:
+        mount_violations.append({
+            "kind":  "disk-mount-parent-missing",
+            "ev_id": ev,
+            "fix":   f"disk-mount row {ev} has no parent blob row {expected_parent}; chain-of-custody broken — re-run case-init.sh on the source evidence",
+        })
+        continue
+    if not parent_row["sha256"] or parent_row["sha256"].strip() == "-":
+        mount_violations.append({
+            "kind":  "disk-mount-parent-unhashed",
+            "ev_id": ev,
+            "fix":   f"disk-mount row {ev} parent {expected_parent} has empty sha256 — original-artifact hashing failed; re-run case-init.sh",
+        })
+    if not r["sha256"] or r["sha256"].strip() == "-":
+        mount_violations.append({
+            "kind":  "disk-mount-unhashed",
+            "ev_id": ev,
+            "fix":   f"disk-mount row {ev} has empty sha256 — /dev/nbd<N> stream hash missing; re-run diskimage-mount.sh on the source",
+        })
+    # If sentinel says mounted=true, the /dev/nbdN block device should exist.
+    sent = sentinel_by_ev.get(expected_parent)
+    if sent and sent.get("mounted") is True:
+        nbd_dev = sent.get("nbd_device") or ""
+        if nbd_dev and not os.path.exists(nbd_dev):
+            mount_violations.append({
+                "kind":  "disk-mount-nbd-detached",
+                "ev_id": ev,
+                "fix":   f"sentinel for {expected_parent} declares mounted=true but {nbd_dev} is no longer attached; either re-run diskimage-mount.sh or call diskimage-unmount.sh to clear the sentinel",
+            })
+
+violations.extend(mount_violations)
+
 # ---- 4. sha256 = '-' must be paired with a documented bundle-skipped reason ----
 # Read leads.md (if present); look for an L-EXTRACT-* row that names the
 # offending ev_id and includes the literal token "operator-acknowledged".
@@ -377,6 +449,31 @@ if bespoke_violations:
             lid = next_lead_id(leads_path, "L-MANIFEST-BESPOKE")
             notes = "operator must reconcile rows into manifest.md before removing the bespoke file (it may carry forensic work that needs migration, not deletion)"
             fh.write(f"| {lid} | - | bootstrap | {hyp} | {v['path']} | high | blocked | {notes} |\n")
+            v["lead_id"] = lid
+
+# Mount-ledger violations get their own BLOCKED leads keyed L-MOUNT-LEDGER-NN.
+mount_ledger_kinds = {
+    "disk-mount-id-malformed",
+    "disk-mount-parent-mismatch",
+    "disk-mount-parent-missing",
+    "disk-mount-parent-unhashed",
+    "disk-mount-unhashed",
+    "disk-mount-nbd-detached",
+}
+mount_ledger_violations = [v for v in violations if v["kind"] in mount_ledger_kinds]
+if mount_ledger_violations:
+    ensure_leads_md(leads_path)
+    with open(leads_path, "r", encoding="utf-8") as fh:
+        existing = fh.read()
+    with open(leads_path, "a", encoding="utf-8") as fh:
+        for v in mount_ledger_violations:
+            ev = v.get("ev_id", "-")
+            hyp = f"Mount ledger violation ({v['kind']}) on {ev}: {v.get('fix', '')[:160]}"
+            if hyp in existing:
+                continue
+            lid = next_lead_id(leads_path, "L-MOUNT-LEDGER")
+            notes = v.get("fix", "operator: review manifest.md disk-mount rows and ./working/mounts/ sentinels")
+            fh.write(f"| {lid} | {ev} | bootstrap | {hyp} | analysis/manifest.md | high | blocked | {notes} |\n")
             v["lead_id"] = lid
 
 # ---- 7. emit + audit ----
