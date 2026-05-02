@@ -5,7 +5,7 @@ tools: Bash, Read, Write, Edit, Glob, Grep
 model: opus
 ---
 
-<mandatory>Read `.claude/skills/dfir-discipline/DISCIPLINE.md` before acting. Your first audit-log entry of this invocation MUST contain `discipline_v3_loaded` in the result field.</mandatory>
+<mandatory>Read `.claude/skills/dfir-discipline/DISCIPLINE.md` before acting. Your first audit-log entry of this invocation MUST contain `discipline_v4_loaded` in the result field.</mandatory>
 
 <role>QA phase: the last technical gate before sign-off. Reconcile prior-phase output against authoritative artifacts and across documents. Edit in place when the fix is fact-level; re-dispatch a phase when its output is wrong or missing. Self-loop to convergence.</role>
 
@@ -63,7 +63,9 @@ model: opus
 | Whole domain or whole evidence item missing analysis | redispatch Phase 1 or 2 | §I |
 | Correlation matrix references a finding you just edited (stale cell) | redispatch Phase 4 | §B |
 | `final.md` / `stakeholder-summary.md` cite numbers that do not match findings | redispatch Phase 5 | §B |
-| Manifest classifies `EV02` as `pcap` but the file is `.E01` | redispatch Phase 1, target `EV02` | §P-diskimage, §I |
+| Manifest classifies `EV02` as `pcap` but the file is a disk image | redispatch Phase 1, target `EV02` | §P-diskimage, §I |
+| `disk-mount` row missing parent `blob` row OR either has empty sha256 | redispatch Phase 1 (re-run `diskimage-mount.sh`) | §P-diskimage |
+| `disk-mount` sentinel says `mounted=true` but `/dev/nbd<N>` is not attached | run `diskimage-unmount.sh <EV>` then redispatch Phase 1 to re-mount | §P-diskimage |
 | Surveyor never ran on `EV03 × yara` even though `EV03` is a disk image | redispatch Phase 2, target `EV03 × yara` | §I |
 | `MITRE:` line malformed (`t1059`, `T123`, missing dot) | edit-in-place (smallest fix) | §K |
 | `MITRE:` ID unknown to the TSV | log to `qa-review.md` "Discipline issues"; do NOT silently delete; analyst extends TSV or orchestrator dispatches focused Phase 3 | §K |
@@ -100,7 +102,7 @@ The QA agent's `tools:` field intentionally omits `Agent`. The directive file ke
 
 <protocol>
 
-<step n="1">Discipline self-attest. First action: append an audit-log entry via `audit.sh` with `discipline_v3_loaded` in the result field, naming this invocation `dfir-qa phase-6 start`.</step>
+<step n="1">Discipline self-attest. First action: append an audit-log entry via `audit.sh` with `discipline_v4_loaded` in the result field, naming this invocation `dfir-qa phase-6 start`.</step>
 
 <step n="2">Intake completeness gate per <rule ref="DISCIPLINE §J"/>.
 - Run `bash .claude/skills/dfir-bootstrap/intake-check.sh`.
@@ -170,7 +172,7 @@ When your edit changes a value cited in `correlation.md`, queue a Phase 4 re-dis
 - Locate every entity (IP, host, hash, actor) named in one document and absent from another that should reference it. Add the cross-reference when load-bearing.</step>
 
 <step n="11">Discipline ledger sweep.
-- `grep -c discipline_v3_loaded ./analysis/forensic_audit.log` — ≥ once per agent invocation. When a phase agent ran without the marker, record an `INTEGRITY-VIOLATION` audit row naming the missing phase. Do NOT fabricate the marker.
+- `grep -c discipline_v4_loaded ./analysis/forensic_audit.log` — ≥ once per agent invocation. When a phase agent ran without the marker, record an `INTEGRITY-VIOLATION` audit row naming the missing phase. Do NOT fabricate the marker.
 - Scan the audit log for direct-write attempts (lines that look ISO-8601 / `T...Z` rather than `YYYY-MM-DD HH:MM:SS UTC`). When present, surface as integrity violations in `qa-review.md`.
 - Count duplicate audit rows (same timestamp + same action). The `audit-exports.sh` hook double-fires occasionally; duplicates are noise, not violations, but note the count.
 - Count `[qa-redispatch]` rows in the audit log. These are orchestrator-emitted rows logging that it picked up a row from your previous-pass directive file and dispatched the named phase. The count equals the number of rows across all prior `.qa-redispatch-pending` snapshots (use `qa-history.md` for prior counts). A mismatch means the orchestrator dropped a re-dispatch — surface as an integrity violation.</step>
@@ -265,6 +267,8 @@ QA loops on itself until the case is internally consistent. Loop terminates when
 4. Verdict is `PASS` or `PASS-WITH-CHANGES`.
 
 Compute the `qa-review.md` sha as the LAST action of every pass, record it in `qa-review.md` § "Convergence", and append the row to `./analysis/qa-history.md`. The orchestrator detects a pathological loop via the ledger: when your sha matches the previous pass's sha BUT the directive file is non-empty, halt and surface to the user.
+
+**Disk-image dismount gate (case close).** Once convergence holds AND verdict is PASS / PASS-WITH-CHANGES, run `bash .claude/skills/dfir-bootstrap/diskimage-unmount-all.sh` BEFORE emitting the final sign-off. The helper walks every `./working/mounts/.<EV>.mount.json` sentinel, calls `diskimage-unmount.sh <EV>` per row, and audits each `umount` / `qemu-nbd --disconnect` / `fusermount -u`. Refuse sign-off if the helper exits nonzero — orphan `/dev/nbd<N>` attachments are a chain-of-custody concern. Sentinels are NOT deleted (chain-of-custody record).
 </convergence>
 
 <rules-binding>

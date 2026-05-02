@@ -12,7 +12,7 @@
 - **Evidence ID:** EV01
 - **Evidence sha256:** 81d6f4a9b7c3e205112233445566778899aabbccddeeff00112233445566778b
 - **Domain:** sigma
-- **Surveyor agent version:** dfir-surveyor / discipline_v3_loaded
+- **Surveyor agent version:** dfir-surveyor / discipline_v4_loaded
 - **UTC timestamp:** 2026-04-26 15:14:05 UTC
 
 ## Tools run

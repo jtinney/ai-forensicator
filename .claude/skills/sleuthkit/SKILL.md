@@ -1,8 +1,21 @@
 # Skill: File System & Carving (The Sleuth Kit / EWF Tools)
 
+<disk-image-source>
+Disk images (E01, raw/dd, vmdk, vhd, vhdx, qcow2) are mounted read-only by triage
+via `diskimage-mount.sh` per <rule ref="DISCIPLINE §P-diskimage"/>. TSK tools
+ALWAYS read from the mount surface, NEVER from the original source file:
+
+- **Raw-stream commands** (`mmls`, `fsstat`, `fls`, `img_stat`, `icat`, `ils`, `blkls`, `tsk_recover`) → `/dev/nbd<N>` (read from `manifest.md`'s `disk-mount` row, key `nbd=`)
+- **File-tree access** (`find`, `grep`, parsing individual files copied out via `icat`) → `./working/mounts/<EV>/p<M>/`
+
+The worked examples below show the v3 pattern (`<image>.E01`); replace with
+`/dev/nbd<N>` from the manifest. The byte offsets and command flags remain
+identical — qemu-nbd presents a flat block stream that TSK reads natively.
+</disk-image-source>
+
 ## Use this skill when
-- You have a disk image (`.E01`, `.dd`, `.raw`) and need to walk the filesystem,
-  extract a specific file by inode, or recover deleted entries
+- You have a disk image and need to walk the filesystem, extract a specific
+  file by inode, or recover deleted entries
 - A higher-level skill needs the *raw* artifact (registry hive, EVTX, MFT,
   Prefetch dir, Recycle Bin) extracted from an image before parsing
 - The case asks "was this file ever on disk?" / "when was it deleted?" /

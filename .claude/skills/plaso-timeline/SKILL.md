@@ -1,5 +1,9 @@
 # Skill: Timeline Generation (Plaso / log2timeline)
 
+<disk-image-source>
+Disk images (E01, raw/dd, vmdk, vhd, vhdx, qcow2) are mounted read-only by triage via `diskimage-mount.sh` per <rule ref="DISCIPLINE §P-diskimage"/>. Point `log2timeline.py` at `/dev/nbd<N>` (from the `manifest.md` disk-mount row, key `nbd=`) — Plaso reads the flat byte stream natively. NEVER point at the original `.E01` / `.vmdk` / etc. file.
+</disk-image-source>
+
 > **Installation:** Plaso 20240308 installed from the GIFT PPA (`ppa:gift/stable`).
 > Packages: `python3-plaso`, `plaso-tools`, `python3-pytsk3`.
 > The standard Ubuntu jammy universe package conflicts with SIFT's libyal libraries —

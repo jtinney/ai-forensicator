@@ -29,7 +29,7 @@ a distinct mutability and integrity contract.
 | # | Layer | Path | Mutability | Integrity ledger |
 |---|-------|------|------------|------------------|
 | 1 | Original evidence | `./evidence/` | Read-only after intake (`chmod a-w`) | `analysis/manifest.md` |
-| 2 | Working copies | `./working/<bundle>/`, `./working/e01/` | Read-only by convention | `analysis/manifest.md` (`bundle-member`, `conversion-e01` rows) |
+| 2 | Working copies | `./working/<bundle>/`, `./working/mounts/<EV>/p<M>/` | Read-only by convention; mounts read-only by kernel | `analysis/manifest.md` (`bundle-member`, `disk-mount` rows) |
 | 3 | Tool reports | `./analysis/<domain>/` | Mutable (recomputable) | None |
 | 4 | Derived artifacts | `./exports/<domain>/...` | Write-once | `analysis/exports-manifest.md` (PostToolUse hook) |
 | 5 | Reports | `./reports/` | Mutable | None |
@@ -98,8 +98,10 @@ Project-wide rules. Canonical definitions in
 - **PCAP order** (`§P-pcap`) is the network entry of `§P-priority`:
   `capinfos` inventory + `zeek` for survey; `suricata`, `tshark`, etc.
   in order for deeper passes.
-- **Non-E01 disk images are converted to E01** in `./working/e01/`
-  before any analysis (`§P-diskimage`).
+- **Disk images are mounted read-only via `qemu-nbd`** (and `ewfmount` for E01)
+  into `./working/mounts/<EV>/p<M>/` after archive extraction. Tools operate
+  off the mount; mounts dismounted at case close. NEVER converted to E01
+  (`§P-diskimage`).
 - **YARA rules** live at `/opt/yara-rules/`; scans read from there; hits
   write to `./exports/yara_hits/` (`§P-yara`).
 - **Sigma rules** live at `/opt/sigma-rules/`; Chainsaw / Hayabusa read

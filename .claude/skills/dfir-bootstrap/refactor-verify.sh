@@ -22,13 +22,13 @@ emit() { printf '%-70s %s\n' "$1" "$2"; }
 # ---- 1. Discipline marker ----
 SELF="$(basename "$0")"
 markers=$(grep -rn "discipline_v" .claude/ CLAUDE.md ARCHITECTURE.md README.md VALIDATION.md 2>/dev/null \
-          | grep -v "$SELF" | grep -c "discipline_v3_loaded" || true)
-v1_remaining=$(grep -rn "discipline_v1_loaded" .claude/ CLAUDE.md ARCHITECTURE.md README.md VALIDATION.md 2>/dev/null \
+          | grep -v "$SELF" | grep -c "discipline_v4_loaded" || true)
+older_remaining=$(grep -rnE "discipline_v[0-3]_loaded" .claude/ CLAUDE.md ARCHITECTURE.md README.md VALIDATION.md 2>/dev/null \
                | grep -v "$SELF" | wc -l)
-if [[ "$markers" -gt 0 && "$v1_remaining" -eq 0 ]]; then
-    emit "1. discipline marker (v2 only, $markers ref)" "PASS"
+if [[ "$markers" -gt 0 && "$older_remaining" -eq 0 ]]; then
+    emit "1. discipline marker (v4 only, $markers ref)" "PASS"
 else
-    emit "1. discipline marker (v2=$markers v1=$v1_remaining)" "FAIL"
+    emit "1. discipline marker (v4=$markers older=$older_remaining)" "FAIL"
     fails=$((fails+1))
 fi
 
@@ -104,6 +104,44 @@ if [[ "$policies" -eq 5 ]]; then
     emit "8. DISCIPLINE.md policy rules (5 / 5)" "PASS"
 else
     emit "8. DISCIPLINE.md policy rules ($policies / 5)" "FAIL"
+    fails=$((fails+1))
+fi
+
+# ---- 8b. v4 disk-image residue scan ----
+# After the mount-don't-convert refactor, the strings working/e01 and
+# conversion-e01 should not appear in any agent prompt, skill file, or
+# CLAUDE.md / ARCHITECTURE.md. ewfacquire is still installed (libewf-tools
+# bundles it) but should not be invoked from any prompt.
+e01_residue=$(grep -rnE 'working/e01|conversion-e01' \
+              .claude/agents/ .claude/skills/ CLAUDE.md ARCHITECTURE.md 2>/dev/null \
+              | grep -v "$SELF" | wc -l)
+if [[ "$e01_residue" -eq 0 ]]; then
+    emit "8b. v4 disk-image residue (0 working/e01|conversion-e01 hits)" "PASS"
+else
+    emit "8b. v4 disk-image residue ($e01_residue hits)" "FAIL"
+    grep -rnE 'working/e01|conversion-e01' \
+        .claude/agents/ .claude/skills/ CLAUDE.md ARCHITECTURE.md 2>/dev/null \
+        | grep -v "$SELF" | head -5 >&2
+    fails=$((fails+1))
+fi
+
+# ---- 8c. v4 mount helpers present + executable ----
+mount_helpers=(
+    .claude/skills/dfir-bootstrap/diskimage-plan.sh
+    .claude/skills/dfir-bootstrap/diskimage-mount.sh
+    .claude/skills/dfir-bootstrap/diskimage-unmount.sh
+    .claude/skills/dfir-bootstrap/diskimage-unmount-all.sh
+)
+helpers_ok=0
+for h in "${mount_helpers[@]}"; do
+    if [[ -x "$h" ]]; then
+        helpers_ok=$((helpers_ok+1))
+    fi
+done
+if [[ "$helpers_ok" -eq "${#mount_helpers[@]}" ]]; then
+    emit "8c. v4 mount helpers ($helpers_ok / ${#mount_helpers[@]} executable)" "PASS"
+else
+    emit "8c. v4 mount helpers ($helpers_ok / ${#mount_helpers[@]} executable)" "FAIL"
     fails=$((fails+1))
 fi
 

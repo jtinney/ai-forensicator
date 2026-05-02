@@ -82,6 +82,44 @@ if [[ "$real_target" != "$real_extract"/* ]]; then
     exit 1
 fi
 
+# ---------- pre-cleanup: dismount any disk-image mounts under TARGET ----------
+# Disk images discovered nested inside ./working/<bundle>/ may have been
+# mounted via diskimage-mount.sh, leaving /dev/nbd<N> attached and
+# ./working/mounts/<EV>/p<M>/ mounted. We MUST detach those before rm -rf,
+# or the kernel will refuse the unlink. Walk all sentinels, find any whose
+# source_relpath resolves under TARGET, and call diskimage-unmount.sh.
+UNMOUNT_SH="${SCRIPT_DIR}/diskimage-unmount.sh"
+unmount_failures=0
+shopt -s nullglob
+for sentinel in ./working/mounts/.*.mount.json; do
+    [[ -f "$sentinel" ]] || continue
+    src_rel="$(grep -oE '"source_relpath":[[:space:]]*"[^"]+"' "$sentinel" 2>/dev/null \
+               | head -1 | sed -E 's/.*"source_relpath":[[:space:]]*"([^"]+)".*/\1/')"
+    [[ -z "$src_rel" ]] && continue
+    # Source is under TARGET if it starts with the bundle-relative prefix.
+    case "$src_rel" in
+        "working/${BASENAME}/"*|"./working/${BASENAME}/"*)
+            base="$(basename "$sentinel")"
+            ev="${base#.}"; ev="${ev%.mount.json}"
+            if [[ "$ev" =~ ^EV[0-9]{2,}$ ]]; then
+                if ! bash "$UNMOUNT_SH" "$ev"; then
+                    unmount_failures=$((unmount_failures + 1))
+                    echo "extraction-cleanup: WARN -- diskimage-unmount.sh $ev failed" >&2
+                fi
+            fi
+            ;;
+    esac
+done
+if [[ "$unmount_failures" -gt 0 ]]; then
+    if [[ -x "$AUDIT_SH" ]]; then
+        bash "$AUDIT_SH" "extraction-cleanup REFUSED" \
+            "${unmount_failures} disk-image mount(s) under ${TARGET} failed to detach" \
+            "operator: investigate orphan /dev/nbd<N>; rerun cleanup after manual unmount" >/dev/null 2>&1 || true
+    fi
+    echo "extraction-cleanup: REFUSED -- ${unmount_failures} mount(s) under ${TARGET} could not be detached; aborting rm -rf" >&2
+    exit 1
+fi
+
 # Count files (depth-unbounded, regular files only) before deletion. This
 # is the "deleted=<N>" figure the audit line carries.
 DELETED_COUNT="$(find "$TARGET" -type f 2>/dev/null | wc -l | tr -d '[:space:]')"

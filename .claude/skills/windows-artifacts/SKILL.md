@@ -1,5 +1,9 @@
 # Skill: Windows Artifacts (EZ Tools / Autoruns / Event Logs)
 
+<disk-image-source>
+Artifacts on a Windows disk image are accessed via the read-only mount produced by `diskimage-mount.sh` per <rule ref="DISCIPLINE §P-diskimage"/>. EZ Tools (`EvtxECmd`, `RECmd`, `MFTECmd`, `AmcacheParser`, etc.) read from `./working/mounts/<EV>/p<M>/` directly — e.g. `EvtxECmd --maps ... --csv ... -d ./working/mounts/EV01/p1/Windows/System32/winevt/Logs/`. Do NOT extract artifacts via `icat` first when the partition mount is available; the mount IS the surface.
+</disk-image-source>
+
 ## Use this skill when
 - The case is Windows host-based and you have parsed/parseable artifacts:
   registry hives, EVTX, Prefetch, Amcache, MFT, $J, Recycle Bin, LNK, Jump
