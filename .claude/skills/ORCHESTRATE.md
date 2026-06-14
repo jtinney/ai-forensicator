@@ -77,6 +77,12 @@ write it on first append.
 | Disk-image mount block (phase 1) | `L-MOUNT-DISK-NN` | `L-MOUNT-DISK-01` |
 | Disk-image mount failure (phase 1) | `L-MOUNT-FAIL-NN` | `L-MOUNT-FAIL-01` |
 | Disk-mount manifest invariant (manifest-check) | `L-MOUNT-LEDGER-NN` | `L-MOUNT-LEDGER-01` |
+| Empty / misconfigured evidence (phase 1, case-init) | `L-EVIDENCE-EMPTY-NN` | `L-EVIDENCE-EMPTY-01` |
+| Bundle-expansion failure (phase 1, case-init) | `L-EXTRACT-FAIL-NN` | `L-EXTRACT-FAIL-01` |
+| Extraction poison / unsafe path (phase 1, case-init) | `L-EXTRACT-POISON-NN` | `L-EXTRACT-POISON-01` |
+| Bespoke hash-file refusal (phase 1, manifest-check) | `L-MANIFEST-BESPOKE-NN` | `L-MANIFEST-BESPOKE-01` |
+| Baseline-artifact gap (phase 4) | `L-BASELINE-<DOMAIN>-NN` | `L-BASELINE-memory-01` |
+| Unguided triage (single-context, TRIAGE.md) | `L-TRIAGE-NN` | `L-TRIAGE-01` |
 
 Each prefix is globally unique per source — parallel agents need no shared
 lock. `NN` is zero-padded and counter-scoped to the invocation.
@@ -255,7 +261,7 @@ open-ended enough to touch multiple domains.
 - `pointer` MUST be line-anchored (`<file>#L<n>` or `<file>#L<n>-L<m>`); a bare filename forces an investigator re-scan and wastes context.
 - `status`: `open` → `in-progress` → `confirmed` / `refuted` / `escalated` / `blocked`.
 - Investigator updates `status` before and after its work. Correlator appends `L-CORR-*` rows ONLY; it MUST NOT modify existing rows.
-- All five lead-ID prefixes (surveyor, `-eNN`, `L-CORR-NN`, `L-EXTRACT-RE-NN`, `L-EXTRACT-DISK-NN`) coexist in this single file.
+- Every lead-ID prefix in the registry above (§ Lead ID conventions) can coexist in this single file.
 
 ## Lead terminal-status invariant
 

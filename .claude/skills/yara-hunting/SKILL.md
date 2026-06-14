@@ -1,3 +1,8 @@
+---
+name: yara-hunting
+description: IOC byte-sweeps and malware-family attribution with YARA / Velociraptor. Use when you have at least one concrete indicator (hash, mutex, named pipe, unique string, code pattern) to sweep the rest of the evidence for siblings, need to attribute a recovered binary to a family, or want to lift another skill's finding into a reusable rule. Triggers — "YARA sweep", "scan for this IOC", "identify this malware family", "hunt siblings of this sample". Skip for EVTX signature matching (use `sigma-hunting`); not a discovery tool — do not reach here with no indicator yet.
+---
+
 # Skill: Threat Hunting & IOC Sweeps (YARA / Velociraptor)
 
 <protocol>

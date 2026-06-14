@@ -1,3 +1,8 @@
+---
+name: windows-artifacts
+description: Windows host artifact analysis with EZ Tools / Autoruns / event logs (EVTX, registry, Prefetch, Amcache, Shimcache, LNK, SRUM, USB, shellbags, browser). Use when the case is Windows host-based and you can name the question — execution, logon/authentication, persistence, USB/removable media, deletion, or anti-forensics. Triggers — "did <binary> run?", "who logged on?", "how does it persist?", "what USB was attached?", "were logs cleared?". Skip for extracting the artifact from an image first (use `sleuthkit`) or memory images (use `memory-analysis`).
+---
+
 # Skill: Windows Artifacts (EZ Tools / Autoruns / Event Logs)
 
 <disk-image-source>

@@ -1,3 +1,8 @@
+---
+name: plaso-timeline
+description: Cross-artifact super-timelines with Plaso / log2timeline. Use when you need one chronological stream across filesystem + EVTX + registry + browser + prefetch, want everything inside an incident window regardless of source, or are merging heterogeneous evidence (disk + memory bodyfile + log dir) into one sortable timeline. Triggers — "build a super-timeline", "what happened in this window", "merge these into one timeline". Skip for a targeted single-artifact question (use `windows-artifacts`) or raw filesystem walking/carving (use `sleuthkit`).
+---
+
 # Skill: Timeline Generation (Plaso / log2timeline)
 
 <disk-image-source>

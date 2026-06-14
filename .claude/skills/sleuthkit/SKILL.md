@@ -1,3 +1,8 @@
+---
+name: sleuthkit
+description: File-system and carving analysis on a disk image with The Sleuth Kit + EWF tools. Use when walking a filesystem, extracting a file by inode, recovering deleted entries, inspecting unallocated/slack, carving (PhotoRec/bulk_extractor), or when another skill needs a raw artifact (hive, EVTX, MFT, Prefetch, Recycle Bin) extracted from an image first. Triggers — "was this file on disk?", "when was it deleted?", "what's in unallocated?", "recover this inode/file", "carve files". Skip for parsing already-extracted Windows artifacts (use `windows-artifacts`) or memory images (use `memory-analysis`).
+---
+
 # Skill: File System & Carving (The Sleuth Kit / EWF Tools)
 
 <disk-image-source>

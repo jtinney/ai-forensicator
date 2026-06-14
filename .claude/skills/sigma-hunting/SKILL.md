@@ -1,3 +1,8 @@
+---
+name: sigma-hunting
+description: Signature-based EVTX triage with Chainsaw + Hayabusa over Sigma rules. Use when you have a corpus of Windows .evtx logs and want portable rule-based detection instead of grep-by-EventID, or need to cross-correlate another skill's finding against event-log signal. Triggers — "run Sigma over these logs", "Chainsaw/Hayabusa hunt", "signature triage of EVTX". Skip for byte/IOC sweeps over files or memory (use `yara-hunting`) or hand-targeted single-EventID lookups (use `windows-artifacts`).
+---
+
 # Skill: Sigma / EVTX Hunting (Chainsaw + Hayabusa)
 
 <protocol>

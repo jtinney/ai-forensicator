@@ -23,7 +23,7 @@
 - `windows.cmdline` -> `python3 /opt/volatility3/vol.py -f ./evidence/JANE-WIN10-DESKTOP.mem windows.cmdline` -> exit 0 -> `./analysis/memory/cmdline.txt`
 - `windows.netscan` -> `python3 /opt/volatility3/vol.py -f ./evidence/JANE-WIN10-DESKTOP.mem windows.netscan` -> exit 0 -> `./analysis/memory/netscan.txt`
 - `windows.malfind` -> `python3 /opt/volatility3/vol.py -f ./evidence/JANE-WIN10-DESKTOP.mem windows.malfind` -> exit 0 -> `./analysis/memory/malfind.txt`
-- `Memory Baseliner (proc)` -> `python3 /opt/volatility3/baseline.py -proc -f ./evidence/JANE-WIN10-DESKTOP.mem --loadbaseline ./baselines/win10_19045_clean.json --jsonbaseline -o ./analysis/memory/baseliner-proc.json` -> exit 0 -> `./analysis/memory/baseliner-proc.json`
+- `Memory Baseliner (proc)` -> `python3 /opt/volatility3/baseline.py -proc -i ./evidence/JANE-WIN10-DESKTOP.mem --loadbaseline --jsonbaseline ./baselines/win10_19045_clean.json -o ./analysis/memory/baseliner-proc.tsv` -> exit 0 -> `./analysis/memory/baseliner-proc.tsv`
 
 ## Findings of interest
 
@@ -31,7 +31,7 @@
 - `psxview` shows PID 4488 (`updater.exe`) listed by `psscan` and `thrdproc` but absent from `pslist` and `csrss_handles` — classic hide-from-pslist pattern; parent PID 624 is `lsass.exe` which is highly anomalous (`./analysis/memory/psxview.csv#L42`). Lead: `L-EV03-memory-02`
 - `windows.malfind` reports one RWX VAD inside PID 4488 with valid `MZ` header at `0x000001f3a0000000`, entropy 7.91, no on-disk file backing — strong injected-PE indicator (`./analysis/memory/malfind.txt#L88-L120`). Lead: `L-EV03-memory-03`
 - `windows.netscan` shows PID 4488 has an ESTABLISHED TCP connection to `185.220.101.42:443`, owner `NT AUTHORITY\SYSTEM` — same IP as the network-forensics beacon target; pivots cleanly with the network domain (`./analysis/memory/netscan.txt#L73`). Lead: `L-EV03-memory-04`
-- Memory Baseliner diff vs `win10_19045_clean.json` flags 3 unique deltas: (a) `updater.exe` PID 4488 (no baseline match), (b) `svchost.exe` PID 1972 with non-default service-host group `netsvcs+UnistackSvcGroup` (rare combination), (c) `winlogon.exe` PID 624 has a non-baseline DLL `crypto32.dll` loaded (`./analysis/memory/baseliner-proc.json#L201-L260`). Lead: `L-EV03-memory-05`
+- Memory Baseliner diff vs `win10_19045_clean.json` flags 3 unique deltas: (a) `updater.exe` PID 4488 (no baseline match), (b) `svchost.exe` PID 1972 with non-default service-host group `netsvcs+UnistackSvcGroup` (rare combination), (c) `winlogon.exe` PID 624 has a non-baseline DLL `crypto32.dll` loaded (`./analysis/memory/baseliner-proc.tsv#L201-L260`). Lead: `L-EV03-memory-05`
 
 ## Lead summary table
 

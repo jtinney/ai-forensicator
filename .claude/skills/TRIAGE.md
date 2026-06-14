@@ -44,6 +44,14 @@ cd "${CLAUDE_PROJECT_DIR}/cases/<CASE_ID>"
 bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/preflight.sh" \
     | tee ./analysis/preflight.md
 bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/case-init.sh" <CASE_ID>
+
+# Disk-image evidence (E01, raw/dd, vmdk, vhd, vhdx, qcow2): mount read-only
+# BEFORE any filesystem tool runs. Filesystem / Plaso / YARA then read the
+# /dev/nbd<N> device (manifest disk-mount row, key `nbd=`) or the partition
+# tree under ./working/mounts/<EV>/p<M>/ — NEVER the original source file
+# (DISCIPLINE §P-diskimage).
+bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/diskimage-plan.sh"
+bash "${CLAUDE_PROJECT_DIR}/.claude/skills/dfir-bootstrap/diskimage-mount.sh" <evidence-relpath> EV01
 ```
 
 Tier the toolbox per `preflight.md` BEFORE touching evidence: Sleuth Kit +
@@ -83,7 +91,7 @@ Run when triage came up clean and the case still demands an answer. Order;
 STOP the moment any pass surfaces a lead.
 
 1. **Targeted Plaso** — `--parsers winevtx,winreg,prefetch,amcache,recycle_bin_*,mft` over the incident window only. Avoid `win10` full preset on first pass.
-2. **Filesystem timeline** — `fls -r -m / <image>.E01 > bodyfile` → `mactime -y -z UTC` filtered to the window.
+2. **Filesystem timeline** — `fls -r -m / /dev/nbd<N> > bodyfile` (read `nbd=` from `manifest.md`'s disk-mount row; never the original `.E01`/source file, per §P-diskimage) → `mactime -y -z UTC` filtered to the window.
 3. **Security + PowerShell + Sysmon EVTX → CSV** with EvtxECmd `-d` against exported `winevt\Logs\`.
 4. **Memory enumeration** (when image present): `psscan`, `pstree`, `cmdline`, `netscan`, `malfind`, `svcscan` to `./analysis/memory/`.
 5. **Browser history** (user-system): `SQLECmd -d ./exports/browser/` for Chrome/Edge/Firefox profile dirs.
