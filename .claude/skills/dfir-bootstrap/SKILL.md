@@ -1,3 +1,8 @@
+---
+name: dfir-bootstrap
+description: Case bootstrap, preflight, and fallback-parser plumbing for the SIFT workstation. Use at case start (scaffold, hash, lock evidence read-only), when a fresh shell needs a tool inventory before evidence is touched, when wiring audit.sh / fallback parsers, or when another skill reports missing tools and you need to know what substitutes exist. Triggers — "start a case", "run preflight", "what tools are installed?", "tool is missing — what now?". Skip for deep artifact analysis (use the matching domain skill) or report writing (use `dfir-reporter`).
+---
+
 # Skill: DFIR Bootstrap & Preflight
 
 ## Use this skill when

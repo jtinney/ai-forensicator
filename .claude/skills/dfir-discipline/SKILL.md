@@ -1,3 +1,8 @@
+---
+name: dfir-discipline
+description: The shared rulebook (DISCIPLINE.md) every phase agent must load — audit-log integrity, headline revalidation, hypothesis-first, scope closure, lead-surface, intake/ATT&CK/multi-evidence rules, and per-domain tool priority. Bound by every agent's <mandatory> line; rarely invoked standalone. Triggers — "what's the discipline rule for X?", "§P-priority / §A / §I lookup". Skip for actually running an analysis (use the matching domain skill).
+---
+
 # Skill: DFIR Discipline (shared rules across all phase agents)
 
 <role>

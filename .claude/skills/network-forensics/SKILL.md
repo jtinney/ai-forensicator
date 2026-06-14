@@ -1,3 +1,8 @@
+---
+name: network-forensics
+description: PCAP / Zeek / Suricata / NetFlow analysis. Use when a packet capture, Zeek logs, Suricata eve.json, or flow records are in scope, or a host-side indicator (IP, domain, JA3, TLS SNI, UA, URI, cert hash) needs confirming on the wire. Triggers — "what was on the wire?", "did this host beacon?", "was data exfiltrated?", "analyze this pcap". Skip for purely host-resident artifacts (use `windows-artifacts`) or memory-resident connections only (use `memory-analysis`).
+---
+
 # Skill: Network Forensics (PCAP / Zeek / Suricata / Flow)
 
 <protocol>
@@ -643,7 +648,14 @@ optional: analysis/network/zeek/files.log
 - **Beaconing detection has high false-positive rate.** Browser keepalives,
   NTP, automatic update checks, and antivirus phone-home all look like
   beaconing. Always confirm with JA3/SNI + process attribution before
-  reporting.
+  reporting. *Worked false-positive:* a low-jitter, high-count candidate to
+  `time.windows.com` / `*.pool.ntp.org` over UDP/123 with small symmetric
+  payloads is NTP, not C2 — `conn.log` `service` reads `ntp`, the cadence
+  matches the host's `w32time` poll interval, and there is no preceding
+  DNS→IP→TLS pattern. Mark it *refuted* with that evidence rather than
+  escalating. Genuine C2 shows a TLS/HTTP service, a JA3 matching a known
+  family (or no SNI at all), and a process owner that is not a system
+  time/update service.
 - **Encrypted traffic limits conclusions.** SNI + JA3 + cert chain + flow size
   + cadence are the only L7-adjacent signals. State this gap explicitly in
   `findings.md` and `00_intake.md` rather than overclaiming.

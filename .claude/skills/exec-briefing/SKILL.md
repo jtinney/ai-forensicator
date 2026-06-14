@@ -1,3 +1,8 @@
+---
+name: exec-briefing
+description: Decision-focused stakeholder briefing for non-technical senior audiences (legal, risk, executives, incident commanders). Use once per case in Phase 5, alongside final.md, to translate confirmed findings into business language and decisions. Triggers — "write the stakeholder/executive summary", "non-technical briefing", "what do we tell leadership". Skip for the technical analyst report (final.md — use `dfir-reporter`) or per-domain findings (use `dfir-investigator`). Never introduce findings not already in final.md / correlation.md / findings.md.
+---
+
 # Skill: Executive Briefing (non-technical stakeholder report)
 
 Produce a short, decision-focused companion to the technical `final.md`. The

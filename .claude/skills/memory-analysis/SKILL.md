@@ -1,3 +1,8 @@
+---
+name: memory-analysis
+description: Memory forensics with Volatility 3 + Memory Baseliner. Use when a memory image (.raw/.mem/.vmem/.dmp/.lime) is in scope, you need what was actually running vs. what disk shows installed (hidden processes, unlinked drivers, in-memory-only payloads), or the prompt mentions injection, hollowing, fileless malware, lsass access, or in-memory C2. Triggers — "analyze this memory dump", "what was running?", "hidden/injected process", "the binary on disk looks clean". Skip for purely on-disk questions (use `windows-artifacts` / `sleuthkit`).
+---
+
 # Skill: Memory Forensics (Volatility 3 / Memory Baseliner)
 
 ## Use this skill when
@@ -504,7 +509,7 @@ optional: analysis/memory/survey-EV01.md
 ## Notes
 
 - `windows.malware.psxview.PsXView` is the canonical "is this hidden?" cross-source enumerator. `pslist` and `psscan` provide raw column detail (offsets, exit times); use them for column lookup, not for hidden-process detection.
-- `windows.malfind` produces false positives (JIT-compiled code, .NET CLR) — triage hits manually before dumping.
+- `windows.malfind` produces false positives (JIT-compiled code, .NET CLR) — triage hits manually before dumping. *Worked false-positive:* an RWX VAD inside `w3wp.exe` / `powershell.exe` whose process tree is benign and whose `dlllist` shows `clr.dll` / `clrjit.dll` is almost certainly .NET JIT, not an implant — confirm the VAD has **no `MZ` header** (`windows.vadinfo --pid`) before spending a `--dump` + YARA cycle. Record it as a *refuted* lead with that reasoning; do not silently skip it (§G).
 - `windows.netscan` may show connections from before image capture time — correlate with disk timeline.
 - `windows.svcscan` surfaces services configured but not yet loaded, and deleted services still in memory.
 - Vol3 plugins use dotted-namespace names (`windows.malfind`, `windows.registry.printkey`, `windows.malware.psxview.PsXView`, plus the cross-platform `timeliner` with no `windows.` prefix). Copy the exact name from `vol.py -h`.
